@@ -94,6 +94,9 @@ export default function Login() {
               autoComplete="password"
               style={styles.input}
             />
+            <Pressable onPress={() => router.push("/forgot-password")} hitSlop={8} style={styles.forgotPasswordWrap}>
+              <Text style={styles.link}>Forgot password?</Text>
+            </Pressable>
             {loading ? (
               <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
             ) : (
@@ -191,6 +194,10 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginVertical: 24,
+  },
+  forgotPasswordWrap: {
+    alignSelf: "flex-end",
+    marginBottom: 8,
   },
   footer: {
     flexDirection: "row",

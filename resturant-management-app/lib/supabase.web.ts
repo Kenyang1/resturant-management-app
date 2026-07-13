@@ -1,6 +1,8 @@
 /**
  * Supabase client for Expo web. Skips expo-sqlite install; session persistence uses browser storage.
- * `detectSessionInUrl: true` supports OAuth-style redirects on web.
+ * `detectSessionInUrl: false` because we exchange the password-reset `?code=` ourselves in
+ * app/reset-password.tsx — auto-detection can't tell "just exchanged a recovery code" apart
+ * from "user already had a session", so it can't drive that screen's valid/invalid link state.
  */
 import { createClient } from '@supabase/supabase-js'
 
@@ -15,6 +17,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true, // Important for web OAuth redirects
+    detectSessionInUrl: false,
+    flowType: "pkce",
   },
 })
