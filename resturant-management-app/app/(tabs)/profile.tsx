@@ -223,7 +223,7 @@ export default function Profile() {
             <Text style={styles.label}>Email</Text>
             <Text style={styles.value}>{userEmail ?? "—"}</Text>
             <Text style={styles.meta}>
-              Sign-in is managed with Firebase Authentication.
+              Sign-in is managed with Supabase Authentication.
             </Text>
           </Card.Content>
         </Card>
