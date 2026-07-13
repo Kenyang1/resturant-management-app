@@ -3,13 +3,14 @@
  * Data: Supabase table `finance_entries` (see supabase-finance-entries.sql).
  */
 import { MascotBanner } from "@/components/MascotBanner"
+import { confirmAction } from "@/lib/alert"
+import { FinanceEntry, FinanceKind, useFinanceEntries } from "@/lib/hooks/useFinanceEntries"
+import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
-import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import {
-  Alert,
   Keyboard,
   Modal,
   Pressable,
@@ -20,18 +21,6 @@ import {
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Button, Card, SegmentedButtons, Text, TextInput } from "react-native-paper"
-
-type FinanceKind = "revenue" | "expense"
-
-type FinanceEntry = {
-  id: number
-  kind: FinanceKind
-  amount: number
-  category: string
-  notes: string | null
-  occurred_on: string
-  created_at: string | null
-}
 
 type PeriodFilter = "all" | "month" | "week"
 
@@ -115,9 +104,7 @@ function pctChange(current: number, previous: number) {
 
 export default function FinanceScreen() {
   const { horizontal, scrollBottomPad, tabMascotHeight } = useMobileLayout()
-  const [entries, setEntries] = useState<FinanceEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: entries, loading, error, insert, update, remove } = useFinanceEntries()
   const [period, setPeriod] = useState<PeriodFilter>("month")
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -129,37 +116,6 @@ export default function FinanceScreen() {
   const [formNotes, setFormNotes] = useState("")
   const [formDate, setFormDate] = useState(toYMD(new Date()))
   const [saveError, setSaveError] = useState<string | null>(null)
-
-  const fetchEntries = useCallback(async () => {
-    try {
-      const { data, error: qErr } = await supabase
-        .from("finance_entries")
-        .select("id, kind, amount, category, notes, occurred_on, created_at")
-        .order("occurred_on", { ascending: false })
-        .order("id", { ascending: false })
-
-      if (qErr) throw qErr
-      setEntries(
-        (data ?? []).map((row) => ({
-          id: row.id,
-          kind: row.kind as FinanceKind,
-          amount: typeof row.amount === "string" ? parseFloat(row.amount) : Number(row.amount),
-          category: row.category ?? "General",
-          notes: row.notes,
-          occurred_on: row.occurred_on,
-          created_at: row.created_at,
-        }))
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchEntries()
-  }, [fetchEntries])
 
   const currentRange = useMemo(() => getCurrentRange(period), [period])
   const previousRange = useMemo(
@@ -190,50 +146,12 @@ export default function FinanceScreen() {
     [entries, searchQuery]
   )
 
-  async function addEntry(
-    kind: FinanceKind,
-    amount: number,
-    category: string,
-    notes: string,
-    occurred_on: string
-  ) {
-    const { error: insErr } = await supabase
-      .from("finance_entries")
-      .insert({ kind, amount, category, notes: notes || null, occurred_on })
-    if (insErr) throw insErr
-    await fetchEntries()
-  }
-
-  async function updateEntry(
-    id: number,
-    kind: FinanceKind,
-    amount: number,
-    category: string,
-    notes: string,
-    occurred_on: string
-  ) {
-    const { error: upErr } = await supabase
-      .from("finance_entries")
-      .update({ kind, amount, category, notes: notes || null, occurred_on })
-      .eq("id", id)
-    if (upErr) throw upErr
-    await fetchEntries()
-  }
-
-  async function deleteEntry(id: number) {
-    const { error: delErr } = await supabase.from("finance_entries").delete().eq("id", id)
-    if (delErr) throw delErr
-    await fetchEntries()
-  }
-
   function confirmDelete(item: FinanceEntry) {
-    Alert.alert(
+    confirmAction(
       "Delete entry",
       `Remove this ${item.kind} of ${money.format(item.amount)}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => void deleteEntry(item.id) },
-      ]
+      "Delete",
+      () => void remove(item.id)
     )
   }
 
@@ -266,19 +184,6 @@ export default function FinanceScreen() {
     setSaveError(null)
   }
 
-  function getErrorMessage(err: unknown): string {
-    if (err instanceof Error) return err.message
-    if (
-      err &&
-      typeof err === "object" &&
-      "message" in err &&
-      typeof (err as { message: unknown }).message === "string"
-    ) {
-      return (err as { message: string }).message
-    }
-    return "Failed to save"
-  }
-
   async function handleSave() {
     const amt = parseFloat(formAmount)
     if (isNaN(amt) || amt < 0) {
@@ -293,19 +198,19 @@ export default function FinanceScreen() {
       setSaveError("Use date format YYYY-MM-DD")
       return
     }
+    const payload = {
+      kind: formKind,
+      amount: amt,
+      category: formCategory.trim(),
+      notes: formNotes.trim() || null,
+      occurred_on: formDate.trim(),
+    }
     try {
       setSaveError(null)
       if (editingItem) {
-        await updateEntry(
-          editingItem.id,
-          formKind,
-          amt,
-          formCategory.trim(),
-          formNotes.trim(),
-          formDate.trim()
-        )
+        await update(editingItem.id, payload)
       } else {
-        await addEntry(formKind, amt, formCategory.trim(), formNotes.trim(), formDate.trim())
+        await insert(payload)
       }
       closeModal()
     } catch (err) {

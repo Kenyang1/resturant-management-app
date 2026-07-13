@@ -1,25 +1,19 @@
 /**
  * Management Log tab — CRUD for operational notes (maintenance, compliance, incidents).
- * Data: Supabase table `management_log`. Auth is separate (Firebase); ensure RLS allows your users.
+ * Data: Supabase table `management_log`.
  */
 import { MascotBanner } from "@/components/MascotBanner"
+import { confirmAction } from "@/lib/alert"
+import { ManagementLogItem, useManagementLog } from "@/lib/hooks/useManagementLog"
+import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
-import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Image } from "expo-image"
-import { Alert, StyleSheet, View, ScrollView, Modal, TouchableWithoutFeedback, Keyboard, Pressable } from "react-native"
+import { StyleSheet, View, ScrollView, Modal, TouchableWithoutFeedback, Keyboard, Pressable } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Button, Card, Text, TextInput } from "react-native-paper"
-
-/** Row shape returned from Supabase (matches DB columns we select). */
-type ManagementLogItem = {
-  id: number
-  title: string
-  description: string
-  created_at: string | null
-}
 
 type ChatMessage = {
   id: string
@@ -81,9 +75,7 @@ function getMockAssistantReply(question: string, entries: ManagementLogItem[]) {
 
 export default function ManagementLog() {
   const { horizontal, scrollBottomPad, tabMascotHeight } = useMobileLayout()
-  const [managementLog, setManagementLog] = useState<ManagementLogItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: managementLog, loading, error, insert, update, remove } = useManagementLog()
   const [modalVisible, setModalVisible] = useState(false)
   const [editingItem, setEditingItem] = useState<ManagementLogItem | null>(null)
   const [formTitle, setFormTitle] = useState("")
@@ -100,71 +92,18 @@ export default function ManagementLog() {
     },
   ])
 
-  // Load newest entries first; list is fully replaced after each fetch.
-  const fetchManagementLog = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("management_log")
-        .select("id, title, description, created_at")
-        .order("id", { ascending: false })
-
-      if (error) throw error
-      setManagementLog(
-        data?.map((item) => ({
-          id: item.id,
-          title: item.title,
-          description: item.description,
-          created_at: item.created_at,
-        })) ?? []
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchManagementLog()
-  }, [fetchManagementLog])
-
   // Search does not hit the server — filters the in-memory list.
   const filteredLog = useMemo(
     () => managementLog.filter((item) => matchesSearch(item, searchQuery)),
     [managementLog, searchQuery]
   )
 
-  async function addManagementLog(title: string, description: string) {
-    const { error } = await supabase
-      .from("management_log")
-      .insert({ title, description })
-    if (error) throw error
-    await fetchManagementLog()
-  }
-
-  async function updateManagementLog(id: number, title: string, description: string) {
-    const { error } = await supabase
-      .from("management_log")
-      .update({ title, description })
-      .eq("id", id)
-    if (error) throw error
-    await fetchManagementLog()
-  }
-
-  async function deleteManagementLog(id: number) {
-    const { error } = await supabase.from("management_log").delete().eq("id", id)
-    if (error) throw error
-    await fetchManagementLog()
-  }
-
   function confirmDelete(item: ManagementLogItem) {
-    Alert.alert(
+    confirmAction(
       "Delete Entry",
       `Are you sure you want to delete "${item.title}"? This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deleteManagementLog(item.id) },
-      ]
+      "Delete",
+      () => remove(item.id)
     )
   }
 
@@ -193,23 +132,15 @@ export default function ManagementLog() {
     setSaveError(null)
   }
 
-  // Normalize Supabase/Firebase-style errors into a string for the modal.
-  function getErrorMessage(err: unknown): string {
-    if (err instanceof Error) return err.message
-    if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
-      return (err as { message: string }).message
-    }
-    return "Failed to save"
-  }
-
   async function handleSave() {
     if (!formTitle.trim()) return
+    const payload = { title: formTitle.trim(), description: formDescription.trim() }
     try {
       setSaveError(null)
       if (editingItem) {
-        await updateManagementLog(editingItem.id, formTitle.trim(), formDescription.trim())
+        await update(editingItem.id, payload)
       } else {
-        await addManagementLog(formTitle.trim(), formDescription.trim())
+        await insert(payload)
       }
       closeModal()
     } catch (err) {

@@ -4,23 +4,16 @@
  * Data: Supabase table `inventory_log`.
  */
 import { MascotBanner } from "@/components/MascotBanner"
+import { confirmAction } from "@/lib/alert"
+import { InventoryLogItem, useInventoryLog } from "@/lib/hooks/useInventoryLog"
+import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
-import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Alert, StyleSheet, View, ScrollView, Modal, TouchableWithoutFeedback, Keyboard } from "react-native"
+import { useMemo, useState } from "react"
+import { StyleSheet, View, ScrollView, Modal, TouchableWithoutFeedback, Keyboard } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Button, Card, Text, TextInput } from "react-native-paper"
-
-/** Row shape from Supabase `inventory_log`. */
-type InventoryLogItem = {
-  id: number
-  item_name: string
-  stock_quantity: number
-  storage_location: string
-  cost_per_unit: number
-}
 
 /** Client-side filter: name, location, stock count, or cost (partial match on displayed values). */
 function matchesSearch(item: InventoryLogItem, query: string) {
@@ -42,9 +35,7 @@ function matchesSearch(item: InventoryLogItem, query: string) {
 
 export default function InventoryLog() {
   const { horizontal, scrollBottomPad, tabMascotHeight } = useMobileLayout()
-  const [inventoryLog, setInventoryLog] = useState<InventoryLogItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: inventoryLog, loading, error, insert, update, remove } = useInventoryLog()
   const [modalVisible, setModalVisible] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryLogItem | null>(null)
   const [formItemName, setFormItemName] = useState("")
@@ -54,82 +45,17 @@ export default function InventoryLog() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
-  const fetchInventoryLog = useCallback(async () => {
-    // Newest rows first; refetch after any insert/update/delete.
-    try {
-      const { data, error } = await supabase
-        .from("inventory_log")
-        .select("id, item_name, stock_quantity, storage_location, cost_per_unit")
-        .order("id", { ascending: false })
-
-      if (error) throw error
-      setInventoryLog(
-        data?.map((item) => ({
-          id: item.id,
-          item_name: item.item_name,
-          stock_quantity: item.stock_quantity,
-          storage_location: item.storage_location,
-          cost_per_unit: item.cost_per_unit,
-        })) ?? []
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchInventoryLog()
-  }, [fetchInventoryLog])
-
   const filteredLog = useMemo(
     () => inventoryLog.filter((item) => matchesSearch(item, searchQuery)),
     [inventoryLog, searchQuery]
   )
 
-  async function addInventoryLog(
-    item_name: string,
-    stock_quantity: number,
-    storage_location: string,
-    cost_per_unit: number
-  ) {
-    const { error } = await supabase
-      .from("inventory_log")
-      .insert({ item_name, stock_quantity, storage_location, cost_per_unit })
-    if (error) throw error
-    await fetchInventoryLog()
-  }
-
-  async function updateInventoryLog(
-    id: number,
-    item_name: string,
-    stock_quantity: number,
-    storage_location: string,
-    cost_per_unit: number
-  ) {
-    const { error } = await supabase
-      .from("inventory_log")
-      .update({ item_name, stock_quantity, storage_location, cost_per_unit })
-      .eq("id", id)
-    if (error) throw error
-    await fetchInventoryLog()
-  }
-
-  async function deleteInventoryLog(id: number) {
-    const { error } = await supabase.from("inventory_log").delete().eq("id", id)
-    if (error) throw error
-    await fetchInventoryLog()
-  }
-
   function confirmDelete(item: InventoryLogItem) {
-    Alert.alert(
+    confirmAction(
       "Delete Entry",
       `Are you sure you want to delete "${item.item_name}"? This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deleteInventoryLog(item.id) },
-      ]
+      "Delete",
+      () => remove(item.id)
     )
   }
 
@@ -164,14 +90,6 @@ export default function InventoryLog() {
     setSaveError(null)
   }
 
-  function getErrorMessage(err: unknown): string {
-    if (err instanceof Error) return err.message
-    if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
-      return (err as { message: string }).message
-    }
-    return "Failed to save"
-  }
-
   async function handleSave() {
     if (!formItemName.trim()) return
     const stockQty = parseInt(formStockQuantity, 10)
@@ -181,23 +99,18 @@ export default function InventoryLog() {
       setSaveError("Please enter valid stock quantity and cost per unit")
       return
     }
+    const payload = {
+      item_name: formItemName.trim(),
+      stock_quantity: stockQty,
+      storage_location: formStorageLocation.trim(),
+      cost_per_unit: costPerUnit,
+    }
     try {
       setSaveError(null)
       if (editingItem) {
-        await updateInventoryLog(
-          editingItem.id,
-          formItemName.trim(),
-          stockQty,
-          formStorageLocation.trim(),
-          costPerUnit
-        )
+        await update(editingItem.id, payload)
       } else {
-        await addInventoryLog(
-          formItemName.trim(),
-          stockQty,
-          formStorageLocation.trim(),
-          costPerUnit
-        )
+        await insert(payload)
       }
       closeModal()
     } catch (err) {

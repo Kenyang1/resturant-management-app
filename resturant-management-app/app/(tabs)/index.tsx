@@ -3,33 +3,16 @@
  * Fetches both Supabase tables in parallel; "Low stock" counts items with stock_quantity under 10.
  */
 import { MascotBanner } from "@/components/MascotBanner"
+import { useInventoryLog } from "@/lib/hooks/useInventoryLog"
+import { useManagementLog } from "@/lib/hooks/useManagementLog"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
-import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { useCallback, useEffect, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Card, Text } from "react-native-paper"
-
-/** Mirrors management_log columns used on this screen. */
-type ManagementLogItem = {
-  id: number
-  title: string
-  description: string
-  created_at: string | null
-}
-
-/** Mirrors inventory_log columns used on this screen. */
-type InventoryLogItem = {
-  id: number
-  item_name: string
-  stock_quantity: number
-  storage_location: string
-  cost_per_unit: number
-}
 
 function formatDate(isoString: string | null) {
   if (!isoString) return ""
@@ -51,57 +34,10 @@ function getGreeting() {
 
 export default function HomeScreen() {
   const { horizontal, scrollBottomPad, homeMascotHeight, compact } = useMobileLayout()
-  const [managementLog, setManagementLog] = useState<ManagementLogItem[]>([])
-  const [inventoryLog, setInventoryLog] = useState<InventoryLogItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      // One round-trip for both tables (faster than sequential requests).
-      const [mgmtRes, invRes] = await Promise.all([
-        supabase
-          .from("management_log")
-          .select("id, title, description, created_at")
-          .order("id", { ascending: false }),
-        supabase
-          .from("inventory_log")
-          .select("id, item_name, stock_quantity, storage_location, cost_per_unit")
-          .order("id", { ascending: false }),
-      ])
-
-      if (mgmtRes.error) throw mgmtRes.error
-      if (invRes.error) throw invRes.error
-
-      setManagementLog(
-        mgmtRes.data?.map((item) => ({
-          id: item.id,
-          title: item.title,
-          description: item.description,
-          created_at: item.created_at,
-        })) ?? []
-      )
-      setInventoryLog(
-        invRes.data?.map((item) => ({
-          id: item.id,
-          item_name: item.item_name,
-          stock_quantity: item.stock_quantity,
-          storage_location: item.storage_location,
-          cost_per_unit: item.cost_per_unit,
-        })) ?? []
-      )
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data: managementLog, loading: mgmtLoading, error: mgmtError } = useManagementLog()
+  const { data: inventoryLog, loading: invLoading, error: invError } = useInventoryLog()
+  const loading = mgmtLoading || invLoading
+  const error = mgmtError ?? invError
 
   // Same rule as Profile help text: flag inventory below 10 units.
   const lowStockCount = inventoryLog.filter((i) => i.stock_quantity < 10).length
