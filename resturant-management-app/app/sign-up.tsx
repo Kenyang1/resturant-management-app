@@ -1,16 +1,15 @@
 /**
- * Creates a Firebase Auth account, then sends the user to the login screen (they sign in explicitly).
+ * Creates a Supabase Auth account, then sends the user to the login screen (they sign in explicitly).
  */
-import { auth } from "@/lib/firebase"
+import { notify } from "@/lib/alert"
+import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { colors } from "@/lib/theme"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { createUserWithEmailAndPassword } from "firebase/auth"
 import { useState } from "react"
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,25 +29,33 @@ export default function SignUp() {
 
   const handleSignUp = async () => {
     if (!email.trim() || !password || !confirmPassword) {
-      Alert.alert("Missing info", "Please fill out all fields.")
+      notify("Missing info", "Please fill out all fields.")
       return
     }
     if (password !== confirmPassword) {
-      Alert.alert("Password mismatch", "Passwords do not match.")
+      notify("Password mismatch", "Passwords do not match.")
       return
     }
     if (password.length < 6) {
-      Alert.alert("Weak password", "Password must be at least 6 characters.")
+      notify("Weak password", "Password must be at least 6 characters.")
       return
     }
 
     setLoading(true)
     try {
-      await createUserWithEmailAndPassword(auth, email.trim(), password)
+      const { data, error } = await supabase.auth.signUp({ email: email.trim(), password })
+      if (error) throw error
+      // With email confirmation enabled, signUp returns no session until the user
+      // clicks the confirmation link — tell them that instead of implying they're done.
+      if (data.session) {
+        notify("Account created", "Your account is ready — sign in to get started.")
+      } else {
+        notify("Check your email", "We sent a confirmation link to your email. Confirm it, then sign in.")
+      }
       router.replace("/login")
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Sign up failed."
-      Alert.alert("Error", message)
+      notify("Error", message)
     } finally {
       setLoading(false)
     }

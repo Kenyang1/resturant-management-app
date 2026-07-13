@@ -1,17 +1,16 @@
 /**
- * Email/password sign-in via Firebase. On success, `router.replace("/")` re-runs the auth gate in `app/index.tsx`.
+ * Email/password sign-in via Supabase Auth. On success, `router.replace("/")` re-runs the auth gate in `app/index.tsx`.
  */
-import { auth } from "@/lib/firebase"
+import { notify } from "@/lib/alert"
+import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
 import { colors } from "@/lib/theme"
 import { router } from "expo-router"
 import { Image } from "expo-image"
-import { signInWithEmailAndPassword } from "firebase/auth"
 import { useState } from "react"
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,17 +29,18 @@ export default function Login() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert("Missing info", "Please enter your email and password.")
+      notify("Missing info", "Please enter your email and password.")
       return
     }
 
     setLoading(true)
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password)
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      if (error) throw error
       router.replace("/")
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Login failed."
-      Alert.alert("Error", message)
+      notify("Error", message)
     } finally {
       setLoading(false)
     }

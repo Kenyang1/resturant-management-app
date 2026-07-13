@@ -1,8 +1,8 @@
 /**
- * Profile / Settings tab — Firebase user info, navigation shortcuts, demo toggles, support, logout.
- * Sign-in state comes from `auth` (Firebase); data tabs use Supabase separately.
+ * Profile / Settings tab — Supabase user info, navigation shortcuts, demo toggles, support, logout.
  */
-import { auth } from "@/lib/firebase"
+import { confirmAction, notify } from "@/lib/alert"
+import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
 import { colors } from "@/lib/theme"
@@ -11,10 +11,8 @@ import * as Haptics from "expo-haptics"
 import { Image } from "expo-image"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { signOut } from "firebase/auth"
 import { useEffect, useState } from "react"
 import {
-  Alert,
   Linking,
   Modal,
   Platform,
@@ -45,9 +43,10 @@ export default function Profile() {
   const [aboutVisible, setAboutVisible] = useState(false)
 
   useEffect(() => {
-    // Email is read once on mount; add onAuthStateChanged if you need live updates after login elsewhere.
-    const user = auth.currentUser
-    setUserEmail(user?.email ?? null)
+    // Email is read once on mount; add onAuthStateChange if you need live updates after login elsewhere.
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null)
+    })
   }, [])
 
   const initial = userEmail?.trim()?.charAt(0)?.toUpperCase() ?? "?"
@@ -55,47 +54,33 @@ export default function Profile() {
   async function performLogout() {
     setLoggingOut(true)
     try {
-      await signOut(auth)
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
       router.replace("/login")
     } catch (e) {
-      const message =
-        e instanceof Error ? e.message : "Could not sign out. Try again."
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        window.alert(message)
-      } else {
-        Alert.alert("Sign out failed", message)
-      }
+      const message = e instanceof Error ? e.message : "Could not sign out. Try again."
+      notify("Sign out failed", message)
     } finally {
       setLoggingOut(false)
     }
   }
 
   function handleLogout() {
-    // Web uses window.confirm; native uses Alert for the same confirmation step.
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      const ok = window.confirm("Are you sure you want to sign out?")
-      if (ok) void performLogout()
-      return
-    }
-    Alert.alert("Logout", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Logout", onPress: () => void performLogout() },
-    ])
+    confirmAction("Logout", "Are you sure you want to sign out?", "Logout", () => void performLogout())
   }
 
   function openSupportEmail() {
     const q = encodeURIComponent("Restaurant app — question")
     const url = `mailto:${SUPPORT_EMAIL}?subject=${q}`
     Linking.openURL(url).catch(() => {
-      Alert.alert("Email", `Contact us at ${SUPPORT_EMAIL}`)
+      notify("Email", `Contact us at ${SUPPORT_EMAIL}`)
     })
   }
 
   function showHelp() {
-    Alert.alert(
+    notify(
       "Tips",
-      "• Use Home for a snapshot of logs and inventory.\n• Finance tab tracks revenue and expenses by period.\n• Inventory and Logs tabs hold full lists and add/edit.\n• Low stock counts items under 10 units.",
-      [{ text: "OK" }]
+      "• Use Home for a snapshot of logs and inventory.\n• Finance tab tracks revenue and expenses by period.\n• Inventory and Logs tabs hold full lists and add/edit.\n• Low stock counts items under 10 units."
     )
   }
 

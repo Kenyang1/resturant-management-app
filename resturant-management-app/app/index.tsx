@@ -1,31 +1,28 @@
 /**
- * App entry: waits for Firebase auth to initialize, then sends the user to the main tabs or login.
+ * App entry: waits for Supabase auth to initialize, then sends the user to the main tabs or login.
  * This file is the default route "/" — see Root `_layout.tsx` for the full stack.
  */
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { colors } from "@/lib/theme";
 import { Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { User } from "firebase/auth";
+import { Session } from "@supabase/supabase-js";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "react-native-paper";
 
 export default function Index() {
-  const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [initializing, setInitializing] = useState(true)
 
-
-  const onAuthStateChangedListener = (user: User | null) => {
-    setUser(user)
-    setInitializing(false)
-  }
-
   useEffect(() => {
-    // Subscribe once; cleanup unsubscribes on unmount.
-    const subscriber = auth.onAuthStateChanged(onAuthStateChangedListener);
-    return subscriber;
+    // onAuthStateChange fires immediately with the current session, so no separate getSession() call is needed.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      setInitializing(false)
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
   if (initializing) {
@@ -38,7 +35,7 @@ export default function Index() {
     )
   }
 
-  return <Redirect href={user ? "/(tabs)" : "/login"} />
+  return <Redirect href={session ? "/(tabs)" : "/login"} />
 }
 
 const styles = StyleSheet.create({
