@@ -1,6 +1,7 @@
 /**
  * Bottom tab navigator: Home, Inventory, Tasks, Finance, Management logs, Profile. Header is hidden; each tab screen sets its own UI.
  */
+import { usePushNotifications } from "@/lib/hooks/usePushNotifications";
 import { colors } from "@/lib/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
@@ -12,6 +13,8 @@ const TAB_BAR_CONTENT_HEIGHT = 62;
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  // Tabs only mount when signed in, so this registers the device for the right user.
+  usePushNotifications();
   const bottomInset = Platform.OS === "ios" ? insets.bottom : Math.max(insets.bottom, 8);
 
   return (
