@@ -3,6 +3,7 @@
  */
 import { confirmAction, notify } from "@/lib/alert"
 import { getAcceptInviteUrl } from "@/lib/authRedirect"
+import { useActivityLog } from "@/lib/hooks/useActivityLog"
 import { RestaurantRole, useRestaurantMembers } from "@/lib/hooks/useRestaurantMembers"
 import { useRestaurantInvites } from "@/lib/hooks/useRestaurantInvites"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
@@ -82,6 +83,8 @@ export default function Profile() {
   const { data: members, updateOwnAvatar } = useRestaurantMembers()
   const { data: invites, createInvite } = useRestaurantInvites()
   const { data: shifts, insert: insertShift } = useShifts()
+  const { data: activity, refetch: refetchActivity } = useActivityLog()
+  const [activityVisible, setActivityVisible] = useState(false)
   const myMember = members.find((m) => m.user_id === userId)
   const myRole = myMember?.role
   const canInvite = myRole === "owner" || myRole === "manager"
@@ -537,6 +540,17 @@ export default function Profile() {
               router.push("/(tabs)/management-log")
             }}
           />
+          <RowDivider />
+          <MenuRow
+            icon="time-outline"
+            iconColor={colors.settings}
+            label="Activity history"
+            description="Who changed what, and when"
+            onPress={() => {
+              refetchActivity()
+              setActivityVisible(true)
+            }}
+          />
         </Card>
 
         <Text style={styles.groupLabel}>Preferences</Text>
@@ -830,6 +844,72 @@ export default function Profile() {
                 </Button>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={activityVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActivityVisible(false)}
+      >
+        <View style={styles.aboutModalOverlay}>
+          <TouchableWithoutFeedback
+            accessibilityRole="button"
+            accessibilityLabel="Close activity history dialog"
+            onPress={() => setActivityVisible(false)}
+          >
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+          <View style={styles.aboutModalCard}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalIcon}>
+              <Ionicons name="time-outline" size={25} color={colors.primary} />
+            </View>
+            <Text style={styles.aboutModalTitle}>Activity history</Text>
+            <Text style={styles.modalSubtitle}>Recent changes across inventory, logs, and finance.</Text>
+            <ScrollView style={styles.activityScroll} showsVerticalScrollIndicator={false}>
+              {activity.length === 0 ? (
+                <Text style={styles.meta}>No activity recorded yet.</Text>
+              ) : (
+                activity.map((entry) => {
+                  const actor = members.find((m) => m.user_id === entry.actor_id)
+                  const verb =
+                    entry.action === "insert" ? "added" : entry.action === "update" ? "updated" : "deleted"
+                  const area =
+                    entry.table_name === "inventory_log"
+                      ? "Inventory"
+                      : entry.table_name === "management_log"
+                        ? "Logs"
+                        : "Finance"
+                  return (
+                    <View key={entry.id} style={styles.activityRow}>
+                      <Text style={styles.activityText}>
+                        <Text style={styles.activityActor}>{actor?.display_name ?? "Someone"}</Text> {verb}{" "}
+                        <Text style={styles.activityActor}>{entry.record_summary}</Text> in {area}
+                      </Text>
+                      <Text style={styles.meta}>
+                        {new Date(entry.created_at).toLocaleString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </Text>
+                    </View>
+                  )
+                })
+              )}
+            </ScrollView>
+            <Button
+              mode="contained"
+              onPress={() => setActivityVisible(false)}
+              style={styles.aboutModalClose}
+              labelStyle={styles.aboutModalCloseLabel}
+            >
+              Close
+            </Button>
           </View>
         </View>
       </Modal>
@@ -1536,5 +1616,24 @@ const styles = StyleSheet.create({
   },
   aboutModalCloseLabel: {
     fontWeight: "700",
+  },
+  activityScroll: {
+    maxHeight: 340,
+    marginBottom: 16,
+  },
+  activityRow: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    gap: 2,
+  },
+  activityText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+  },
+  activityActor: {
+    fontWeight: "700",
+    color: colors.textPrimary,
   },
 })

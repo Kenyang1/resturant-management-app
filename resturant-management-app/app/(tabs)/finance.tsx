@@ -2,13 +2,16 @@
  * Finance tab — revenue & expense entries with period totals and vs previous period.
  * Data: Supabase table `finance_entries` (see supabase-finance-entries.sql).
  */
-import { confirmAction } from "@/lib/alert"
+import { confirmAction, notify } from "@/lib/alert"
+import { useApprovalRequests } from "@/lib/hooks/useApprovalRequests"
 import { FinanceEntry, FinanceKind, useFinanceEntries } from "@/lib/hooks/useFinanceEntries"
+import { useRestaurantMembers } from "@/lib/hooks/useRestaurantMembers"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
+import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
 import { MaterialCommunityIcons } from "@expo/vector-icons"
-import { type ComponentProps, useMemo, useState } from "react"
+import { type ComponentProps, useEffect, useMemo, useState } from "react"
 import {
   Keyboard,
   Modal,
@@ -122,9 +125,39 @@ function getCategoryIcon(category: string, kind: FinanceKind): FinanceIconName {
 
 export default function FinanceScreen() {
   const { horizontal, scrollBottomPad } = useMobileLayout()
-  const { data: entries, loading, error, insert, update, remove } = useFinanceEntries()
+  const { data: entries, loading, error, insert, update, remove, refetch } = useFinanceEntries()
+  const { data: members } = useRestaurantMembers()
+  const { data: approvalRequests, submitExpenseRequest, decide } = useApprovalRequests()
+  const [userId, setUserId] = useState<string | null>(null)
+  const [decidingId, setDecidingId] = useState<string | null>(null)
   const [period, setPeriod] = useState<PeriodFilter>("month")
   const [searchQuery, setSearchQuery] = useState("")
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+  }, [])
+
+  // Staff submit approval requests instead of writing entries directly (RLS enforces
+  // this server-side too — see the Milestone 6 migration). A user can hold multiple
+  // memberships (e.g. leftover solo restaurant + a team they joined), so take the
+  // least-privileged view: any staff membership hides the manager affordances.
+  // Until members load we assume the direct-write path; the server rejects if wrong.
+  const myRoles = members.filter((m) => m.user_id === userId).map((m) => m.role)
+  const canManageFinance = myRoles.length === 0 || !myRoles.includes("staff")
+  const pendingApprovals = approvalRequests.filter((r) => r.status === "pending")
+  const myRequests = approvalRequests.filter((r) => r.requested_by === userId)
+
+  async function handleDecide(requestId: string, decision: "approved" | "rejected") {
+    setDecidingId(requestId)
+    try {
+      await decide(requestId, decision)
+      if (decision === "approved") await refetch()
+    } catch (err) {
+      notify("Error", getErrorMessage(err))
+    } finally {
+      setDecidingId(null)
+    }
+  }
 
   const [modalVisible, setModalVisible] = useState(false)
   const [editingItem, setEditingItem] = useState<FinanceEntry | null>(null)
@@ -237,8 +270,11 @@ export default function FinanceScreen() {
       setSaveError(null)
       if (editingItem) {
         await update(editingItem.id, payload)
-      } else {
+      } else if (canManageFinance) {
         await insert(payload)
+      } else {
+        await submitExpenseRequest(payload)
+        notify("Sent for approval", "A manager will review your transaction request.")
       }
       closeModal()
     } catch (err) {
@@ -431,6 +467,87 @@ export default function FinanceScreen() {
           />
         </View>
 
+        {canManageFinance && pendingApprovals.length > 0 && (
+          <View style={styles.approvalsSection}>
+            <View style={styles.listHeader}>
+              <Text style={styles.listHeading}>Pending approvals</Text>
+              <View style={styles.entryCountPill}>
+                <Text style={styles.entryCountText}>{pendingApprovals.length}</Text>
+              </View>
+            </View>
+            {pendingApprovals.map((req) => {
+              const requester = members.find((m) => m.user_id === req.requested_by)
+              return (
+                <Card key={req.id} style={styles.approvalCard} mode="contained">
+                  <Card.Content style={styles.approvalCardContent}>
+                    <View style={styles.approvalCopy}>
+                      <Text style={styles.itemTitle} numberOfLines={1}>
+                        {req.payload.kind === "expense" ? "−" : "+"}
+                        {money.format(req.payload.amount)} • {req.payload.category}
+                      </Text>
+                      <Text style={styles.itemDescription} numberOfLines={1}>
+                        {requester?.display_name ?? "Team member"} • {formatShortDate(req.payload.occurred_on)}
+                        {req.payload.notes ? ` • ${req.payload.notes}` : ""}
+                      </Text>
+                    </View>
+                    <View style={styles.approvalActions}>
+                      <Button
+                        mode="contained"
+                        compact
+                        loading={decidingId === req.id}
+                        disabled={decidingId !== null}
+                        onPress={() => handleDecide(req.id, "approved")}
+                        style={styles.approveButton}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        mode="outlined"
+                        compact
+                        disabled={decidingId !== null}
+                        onPress={() => handleDecide(req.id, "rejected")}
+                        textColor={colors.error}
+                      >
+                        Reject
+                      </Button>
+                    </View>
+                  </Card.Content>
+                </Card>
+              )
+            })}
+          </View>
+        )}
+
+        {!canManageFinance && myRequests.length > 0 && (
+          <View style={styles.approvalsSection}>
+            <View style={styles.listHeader}>
+              <Text style={styles.listHeading}>My requests</Text>
+            </View>
+            {myRequests.slice(0, 3).map((req) => (
+              <Card key={req.id} style={styles.approvalCard} mode="contained">
+                <Card.Content style={styles.approvalCardContent}>
+                  <View style={styles.approvalCopy}>
+                    <Text style={styles.itemTitle} numberOfLines={1}>
+                      {req.payload.kind === "expense" ? "−" : "+"}
+                      {money.format(req.payload.amount)} • {req.payload.category}
+                    </Text>
+                    <Text style={styles.itemDescription}>{formatShortDate(req.payload.occurred_on)}</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.requestStatusText,
+                      req.status === "approved" && { color: colors.primaryDark },
+                      req.status === "rejected" && { color: colors.error },
+                    ]}
+                  >
+                    {req.status}
+                  </Text>
+                </Card.Content>
+              </Card>
+            ))}
+          </View>
+        )}
+
         <View style={styles.listHeader}>
           <Text style={styles.listHeading}>Recent transactions</Text>
           <View style={styles.entryCountPill}>
@@ -495,26 +612,28 @@ export default function FinanceScreen() {
                     {item.kind === "expense" ? "−" : "+"}
                     {money.format(item.amount)}
                   </Text>
-                  <View style={styles.transactionActions}>
-                    <Pressable
-                      onPress={() => openEditModal(item)}
-                      style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Edit ${item.category} transaction`}
-                      hitSlop={4}
-                    >
-                      <MaterialCommunityIcons name="pencil-outline" size={17} color={colors.textSecondary} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => confirmDelete(item)}
-                      style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete ${item.category} transaction`}
-                      hitSlop={4}
-                    >
-                      <MaterialCommunityIcons name="trash-can-outline" size={17} color={colors.error} />
-                    </Pressable>
-                  </View>
+                  {canManageFinance && (
+                    <View style={styles.transactionActions}>
+                      <Pressable
+                        onPress={() => openEditModal(item)}
+                        style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${item.category} transaction`}
+                        hitSlop={4}
+                      >
+                        <MaterialCommunityIcons name="pencil-outline" size={17} color={colors.textSecondary} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => confirmDelete(item)}
+                        style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${item.category} transaction`}
+                        hitSlop={4}
+                      >
+                        <MaterialCommunityIcons name="trash-can-outline" size={17} color={colors.error} />
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               </Card.Content>
             </Card>
@@ -531,7 +650,7 @@ export default function FinanceScreen() {
           labelStyle={styles.bottomAddButtonLabel}
           icon="plus"
         >
-          Add transaction
+          {canManageFinance ? "Add transaction" : "Request transaction"}
         </Button>
       </View>
 
@@ -909,6 +1028,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
+  },
+  approvalsSection: {
+    marginBottom: 16,
+  },
+  approvalCard: {
+    marginBottom: 10,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.statLogsBorder,
+  },
+  approvalCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  approvalCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  approvalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+  approveButton: {
+    backgroundColor: colors.primary,
+  },
+  requestStatusText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    color: colors.textMuted,
+    flexShrink: 0,
   },
   listHeading: {
     flex: 1,
