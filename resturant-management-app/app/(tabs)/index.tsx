@@ -22,6 +22,15 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Checkbox, Text } from "react-native-paper"
 
+function formatDate(isoString: string | null) {
+  if (!isoString) return ""
+  return new Date(isoString).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
 function formatHeaderDate() {
   return new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -329,6 +338,102 @@ export default function HomeScreen() {
                 </View>
               )
             })
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>At a glance</Text>
+          <View style={styles.statsRow}>
+            <View style={[styles.statCard, styles.statLogs]}>
+              <Text style={styles.statValue}>{managementLog.length}</Text>
+              <Text style={styles.statLabel}>Logs</Text>
+            </View>
+            <View style={[styles.statCard, styles.statItems]}>
+              <Text style={styles.statValue}>{inventoryLog.length}</Text>
+              <Text style={styles.statLabel}>Items</Text>
+            </View>
+            <View style={[styles.statCard, lowStockCount > 0 ? styles.statWarning : styles.statStock]}>
+              <Text style={[styles.statValue, lowStockCount > 0 && styles.statValueWarning]}>
+                {lowStockCount}
+              </Text>
+              <Text style={styles.statLabel}>Low stock</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent management logs</Text>
+            <Pressable onPress={() => router.push("/(tabs)/management-log")} hitSlop={8}>
+              <Text style={styles.seeAll}>See all</Text>
+            </Pressable>
+          </View>
+          {managementLog.length === 0 ? (
+            <View style={styles.emptyActivityCard}>
+              <Ionicons name="document-text-outline" size={22} color={colors.textMuted} />
+              <Text style={styles.emptyActivityText}>No management logs yet</Text>
+            </View>
+          ) : (
+            managementLog.slice(0, 3).map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push("/(tabs)/management-log")}
+                style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
+              >
+                <View style={styles.activityIcon}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.management} />
+                </View>
+                <View style={styles.activityCopy}>
+                  <Text style={styles.activityTitle} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.activityDescription} numberOfLines={2}>
+                    {item.description}
+                  </Text>
+                  {item.created_at && (
+                    <Text style={styles.activityMeta}>{formatDate(item.created_at)}</Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+            ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent inventory</Text>
+            <Pressable onPress={() => router.push("/(tabs)/inventory-log")} hitSlop={8}>
+              <Text style={styles.seeAll}>See all</Text>
+            </Pressable>
+          </View>
+          {inventoryLog.length === 0 ? (
+            <View style={styles.emptyActivityCard}>
+              <Ionicons name="cube-outline" size={22} color={colors.textMuted} />
+              <Text style={styles.emptyActivityText}>No inventory items yet</Text>
+            </View>
+          ) : (
+            inventoryLog.slice(0, 3).map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push("/(tabs)/inventory-log")}
+                style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
+              >
+                <View style={[styles.activityIcon, styles.inventoryActivityIcon]}>
+                  <Ionicons name="cube-outline" size={20} color={colors.inventory} />
+                </View>
+                <View style={styles.activityCopy}>
+                  <Text style={styles.activityTitle} numberOfLines={1}>
+                    {item.item_name}
+                  </Text>
+                  <Text style={styles.activityDescription} numberOfLines={1}>
+                    {item.stock_quantity} in stock • {item.storage_location}
+                  </Text>
+                  <Text style={styles.activityMeta}>${item.cost_per_unit.toFixed(2)} per unit</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+            ))
           )}
         </View>
       </ScrollView>
@@ -652,5 +757,109 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 9,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 13,
+    borderRadius: 13,
+    borderWidth: 1,
+  },
+  statLogs: {
+    backgroundColor: colors.statLogsBg,
+    borderColor: colors.statLogsBorder,
+  },
+  statItems: {
+    backgroundColor: colors.statItemsBg,
+    borderColor: colors.statItemsBorder,
+  },
+  statStock: {
+    backgroundColor: colors.statStockBg,
+    borderColor: colors.statStockBorder,
+  },
+  statWarning: {
+    backgroundColor: colors.statLogsBg,
+    borderColor: colors.warning,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    fontVariant: ["tabular-nums"],
+  },
+  statValueWarning: {
+    color: colors.managementDark,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  activityCard: {
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    boxShadow: "0 1px 2px rgba(31, 55, 40, 0.05)",
+  },
+  activityIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.statLogsBg,
+  },
+  inventoryActivityIcon: {
+    backgroundColor: colors.statItemsBg,
+  },
+  activityCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  activityTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  activityDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  activityMeta: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 3,
+  },
+  emptyActivityCard: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyActivityText: {
+    fontSize: 14,
+    color: colors.textMuted,
   },
 })

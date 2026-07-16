@@ -2,7 +2,6 @@
  * Management Log tab — CRUD for operational notes (maintenance, compliance, incidents).
  * Data: Supabase table `management_log`.
  */
-import { MascotBanner } from "@/components/MascotBanner"
 import { MisoChatModal } from "@/components/miso-chat-modal"
 import { confirmAction } from "@/lib/alert"
 import { ManagementLogItem, useManagementLog } from "@/lib/hooks/useManagementLog"
@@ -10,23 +9,98 @@ import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
 import { colors } from "@/lib/theme"
-import { useMemo, useState } from "react"
+import { Ionicons } from "@expo/vector-icons"
 import { Image } from "expo-image"
-import { StyleSheet, View, ScrollView, Modal, TouchableWithoutFeedback, Keyboard, Pressable } from "react-native"
+import { useMemo, useState } from "react"
+import {
+  Keyboard,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { Button, Card, Text, TextInput } from "react-native-paper"
+import { Button, Text, TextInput } from "react-native-paper"
+
+type LogPresentation = {
+  label: string
+  icon: keyof typeof Ionicons.glyphMap
+  iconColor: string
+  iconBackground: string
+}
+
+type OverviewMetric = {
+  label: string
+  value: number
+  icon: keyof typeof Ionicons.glyphMap
+}
 
 /** User-facing date/time for log timestamps. */
 function formatDate(isoString: string | null) {
   if (!isoString) return ""
   const date = new Date(isoString)
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
+  const today = new Date()
+  const isToday =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+
+  if (isToday) {
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  }
+
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+/** Adds a lightweight category treatment without changing the stored log data. */
+function getLogPresentation(item: ManagementLogItem): LogPresentation {
+  const copy = `${item.title} ${item.description}`.toLowerCase()
+
+  if (
+    copy.includes("maintenance") ||
+    copy.includes("repair") ||
+    copy.includes("equipment") ||
+    copy.includes("broken")
+  ) {
+    return {
+      label: "Maintenance",
+      icon: "construct-outline",
+      iconColor: colors.managementDark,
+      iconBackground: colors.statLogsBg,
+    }
+  }
+
+  if (copy.includes("incident") || copy.includes("accident") || copy.includes("injury")) {
+    return {
+      label: "Incident",
+      icon: "alert-circle-outline",
+      iconColor: colors.error,
+      iconBackground: "#FFF1EF",
+    }
+  }
+
+  if (
+    copy.includes("compliance") ||
+    copy.includes("inspection") ||
+    copy.includes("safety") ||
+    copy.includes("temperature")
+  ) {
+    return {
+      label: "Compliance",
+      icon: "shield-checkmark-outline",
+      iconColor: colors.primary,
+      iconBackground: colors.surfaceWarm,
+    }
+  }
+
+  return {
+    label: "Operations",
+    icon: "clipboard-outline",
+    iconColor: colors.inventory,
+    iconBackground: colors.statItemsBg,
+  }
 }
 
 /** Client-side filter: title or description contains the search text (case-insensitive). */
@@ -39,7 +113,7 @@ function matchesSearch(item: ManagementLogItem, query: string) {
 }
 
 export default function ManagementLog() {
-  const { horizontal, scrollBottomPad, tabMascotHeight } = useMobileLayout()
+  const { horizontal, scrollBottomPad } = useMobileLayout()
   const { data: managementLog, loading, error, insert, update, remove } = useManagementLog()
   const [modalVisible, setModalVisible] = useState(false)
   const [editingItem, setEditingItem] = useState<ManagementLogItem | null>(null)
@@ -54,6 +128,49 @@ export default function ManagementLog() {
     () => managementLog.filter((item) => matchesSearch(item, searchQuery)),
     [managementLog, searchQuery]
   )
+
+  const overviewMetrics = useMemo<OverviewMetric[]>(() => {
+    const today = new Date()
+    const matchesKeywords = (item: ManagementLogItem, keywords: string[]) => {
+      const copy = `${item.title} ${item.description}`.toLowerCase()
+      return keywords.some((keyword) => copy.includes(keyword))
+    }
+
+    return [
+      {
+        label: "Total logs",
+        value: managementLog.length,
+        icon: "clipboard-outline",
+      },
+      {
+        label: "Issues",
+        value: managementLog.filter((item) =>
+          matchesKeywords(item, ["incident", "issue", "spill"])
+        ).length,
+        icon: "warning-outline",
+      },
+      {
+        label: "Maintenance",
+        value: managementLog.filter((item) =>
+          matchesKeywords(item, ["repair", "maintenance", "equipment"])
+        ).length,
+        icon: "construct-outline",
+      },
+      {
+        label: "Today",
+        value: managementLog.filter((item) => {
+          if (!item.created_at) return false
+          const createdAt = new Date(item.created_at)
+          return (
+            createdAt.getFullYear() === today.getFullYear() &&
+            createdAt.getMonth() === today.getMonth() &&
+            createdAt.getDate() === today.getDate()
+          )
+        }).length,
+        icon: "today-outline",
+      },
+    ]
+  }, [managementLog])
 
   function confirmDelete(item: ManagementLogItem) {
     confirmAction(
@@ -108,6 +225,9 @@ export default function ManagementLog() {
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.centered]} edges={["left", "right", "bottom"]}>
+        <View style={styles.loadingIconWrap}>
+          <Ionicons name="clipboard-outline" size={30} color={colors.primary} />
+        </View>
         <Text style={styles.loadingText}>Loading management logs...</Text>
       </SafeAreaView>
     )
@@ -122,157 +242,277 @@ export default function ManagementLog() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={[styles.mascotSection, { paddingHorizontal: horizontal }]}>
-        <MascotBanner
-          source={mascotImages.management}
-          height={tabMascotHeight}
-          accessibilityLabel="Chef cat mascot with management logbook"
-        />
-      </View>
-      <View style={[styles.header, { paddingHorizontal: horizontal }]}>
-        <Text style={styles.title} numberOfLines={1}>
-          Management Log
-        </Text>
-        <Button
-          mode="contained"
-          onPress={openAddModal}
-          style={styles.addButton}
-          contentStyle={styles.addButtonContent}
-          labelStyle={styles.addButtonLabel}
-          icon="plus"
-          compact
-        >
-          Add
-        </Button>
-      </View>
-
-      <View style={[styles.searchWrap, { paddingHorizontal: horizontal }]}>
-        <TextInput
-          mode="outlined"
-          placeholder="Search title or description"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={styles.searchInput}
-          outlineStyle={styles.searchOutline}
-          left={<TextInput.Icon icon="magnify" />}
-          right={
-            searchQuery.length > 0 ? (
-              <TextInput.Icon icon="close" onPress={() => setSearchQuery("")} />
-            ) : undefined
-          }
-        />
-      </View>
-
       <ScrollView
         style={styles.scrollView}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[
           styles.scrollContent,
           { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {managementLog.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No management logs yet</Text>
-            <Text style={styles.emptySubtext}>Tap &quot;Add Entry&quot; to create one</Text>
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Management logs</Text>
+            <Text style={styles.subtitle}>
+              {managementLog.length} {managementLog.length === 1 ? "entry" : "entries"}
+            </Text>
           </View>
-        ) : filteredLog.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No matching logs</Text>
-            <Text style={styles.emptySubtext}>Try a different search or clear the filter</Text>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Operations overview</Text>
+          <View style={styles.metricsRow}>
+            {overviewMetrics.map((metric, index) => (
+              <View
+                key={metric.label}
+                style={[styles.metric, index < overviewMetrics.length - 1 && styles.metricDivider]}
+              >
+                <Ionicons name={metric.icon} size={23} color="#FFFFFF" />
+                <Text style={styles.metricValue}>{metric.value}</Text>
+                <Text style={styles.metricLabel} numberOfLines={1}>
+                  {metric.label}
+                </Text>
+              </View>
+            ))}
           </View>
-        ) : (
-          filteredLog.map((item) => (
-            <Card key={item.id} style={styles.card}>
-              <Card.Content style={styles.cardContent}>
-                <Text style={styles.itemTitle}>{item.title}</Text>
-                <Text style={styles.itemDescription}>{item.description}</Text>
-                {item.created_at && (
-                  <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
-                )}
-              </Card.Content>
-              <Card.Actions style={styles.cardActions}>
-                <Button mode="outlined" compact onPress={() => openEditModal(item)}>
-                  Edit
-                </Button>
-                <Button
-                  mode="outlined"
-                  compact
-                  onPress={() => confirmDelete(item)}
-                  textColor={colors.error}
-                >
-                  Delete
-                </Button>
-              </Card.Actions>
-            </Card>
-          ))
-        )}
+        </View>
+
+        <TextInput
+          mode="outlined"
+          placeholder="Search management logs"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={styles.searchInput}
+          outlineStyle={styles.searchOutline}
+          contentStyle={styles.searchContent}
+          left={<TextInput.Icon icon="magnify" color={colors.textSecondary} />}
+          right={
+            searchQuery.length > 0 ? (
+              <TextInput.Icon icon="close" onPress={() => setSearchQuery("")} />
+            ) : undefined
+          }
+        />
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ask Miso about management logs"
+          onPress={() => setChatVisible(true)}
+          style={({ pressed }) => [styles.misoBanner, pressed && styles.pressed]}
+        >
+          <View style={styles.misoImageWrap}>
+            <Image
+              source={mascotImages.chat}
+              style={styles.misoImage}
+              contentFit="cover"
+              accessibilityLabel="Miso assistant"
+            />
+          </View>
+          <View style={styles.misoCopy}>
+            <Text style={styles.misoTitle}>Need help reviewing your logs?</Text>
+            <Text style={styles.misoText}>Miso can summarize recent activity and incidents.</Text>
+            <View style={styles.misoButton}>
+              <Ionicons name="help-circle" size={17} color="#FFFFFF" />
+              <Text style={styles.misoButtonText}>Ask Miso</Text>
+            </View>
+          </View>
+        </Pressable>
+
+        <View style={styles.listSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent activity</Text>
+            {searchQuery.trim().length > 0 && (
+              <Text style={styles.resultsCount}>
+                {filteredLog.length} {filteredLog.length === 1 ? "result" : "results"}
+              </Text>
+            )}
+          </View>
+
+          {managementLog.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="document-text-outline" size={28} color={colors.primary} />
+              </View>
+              <Text style={styles.emptyText}>No management logs yet</Text>
+              <Text style={styles.emptySubtext}>
+                Add your first operational note to start the record.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={openAddModal}
+                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.emptyButtonText}>Add first log</Text>
+              </Pressable>
+            </View>
+          ) : filteredLog.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="search-outline" size={28} color={colors.primary} />
+              </View>
+              <Text style={styles.emptyText}>No matching logs</Text>
+              <Text style={styles.emptySubtext}>Try a different search or clear the filter.</Text>
+            </View>
+          ) : (
+            filteredLog.map((item) => {
+              const presentation = getLogPresentation(item)
+
+              return (
+                <View key={item.id} style={styles.logCard}>
+                  <View
+                    style={[
+                      styles.logIconWrap,
+                      { backgroundColor: presentation.iconBackground },
+                    ]}
+                  >
+                    <Ionicons name={presentation.icon} size={23} color={presentation.iconColor} />
+                  </View>
+
+                  <View style={styles.logMain}>
+                    <Text style={styles.itemTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.itemDescription} numberOfLines={2}>
+                      {item.description || "No additional details."}
+                    </Text>
+                    <Text style={styles.logCategory}>{presentation.label}</Text>
+                  </View>
+
+                  <View style={styles.logTrailing}>
+                    {item.created_at && (
+                      <View style={styles.datePill}>
+                        <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
+                      </View>
+                    )}
+                    <View style={styles.cardActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${item.title}`}
+                        onPress={() => openEditModal(item)}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                          styles.cardAction,
+                          pressed && styles.actionPressed,
+                        ]}
+                      >
+                        <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${item.title}`}
+                        onPress={() => confirmDelete(item)}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                          styles.cardAction,
+                          pressed && styles.actionPressed,
+                        ]}
+                      >
+                        <Ionicons name="trash-outline" size={17} color={colors.error} />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              )
+            })
+          )}
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add management log"
+          onPress={openAddModal}
+          style={({ pressed }) => [styles.bottomAddButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="add" size={24} color="#FFFFFF" />
+          <Text style={styles.bottomAddButtonText}>Add log</Text>
+        </Pressable>
       </ScrollView>
 
       {/* Full-screen dimmed overlay; tap outside closes. Inner TouchableWithoutFeedback stops taps on the card from bubbling to the backdrop. */}
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeModal}
-      >
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
           <View style={StyleSheet.absoluteFill}>
             <TouchableWithoutFeedback onPress={closeModal}>
               <View style={StyleSheet.absoluteFill} />
             </TouchableWithoutFeedback>
           </View>
-            <TouchableWithoutFeedback>
+          <TouchableWithoutFeedback>
             <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>
-                  {editingItem ? "Edit Entry" : "Add Entry"}
-                </Text>
-                {saveError && (
-                  <Text style={styles.saveErrorText}>{saveError}</Text>
-                )}
-                <TextInput
-                  label="Title"
-                  value={formTitle}
-                  onChangeText={setFormTitle}
-                  mode="outlined"
-                  style={styles.modalInput}
-                  autoFocus
-                />
-                <TextInput
-                  label="Description"
-                  value={formDescription}
-                  onChangeText={setFormDescription}
-                  mode="outlined"
-                  multiline
-                  numberOfLines={3}
-                  style={styles.modalInput}
-                />
-                <View style={styles.modalActions}>
-                  <Button mode="outlined" onPress={closeModal} style={[styles.modalButton, { marginRight: 12 }]}>
-                    Cancel
-                  </Button>
-                  <Button mode="contained" onPress={handleSave} style={styles.modalButton}>
-                    Save
-                  </Button>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderIcon}>
+                  <Ionicons
+                    name={editingItem ? "create-outline" : "add"}
+                    size={22}
+                    color={colors.primary}
+                  />
                 </View>
+                <View style={styles.modalHeaderCopy}>
+                  <Text style={styles.modalEyebrow}>MANAGEMENT LOG</Text>
+                  <Text style={styles.modalTitle}>
+                    {editingItem ? "Edit entry" : "Add entry"}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  onPress={closeModal}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.modalClose, pressed && styles.actionPressed]}
+                >
+                  <Ionicons name="close" size={20} color={colors.textSecondary} />
+                </Pressable>
               </View>
-            </TouchableWithoutFeedback>
+
+              <Text style={styles.modalDescription}>
+                Capture the details your team will need for the next shift.
+              </Text>
+
+              {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
+
+              <TextInput
+                label="Title"
+                value={formTitle}
+                onChangeText={setFormTitle}
+                mode="outlined"
+                style={styles.modalInput}
+                outlineStyle={styles.modalInputOutline}
+                autoFocus
+              />
+              <TextInput
+                label="Description"
+                value={formDescription}
+                onChangeText={setFormDescription}
+                mode="outlined"
+                multiline
+                numberOfLines={4}
+                style={[styles.modalInput, styles.descriptionInput]}
+                outlineStyle={styles.modalInputOutline}
+              />
+
+              <View style={styles.modalActions}>
+                <Button
+                  mode="outlined"
+                  onPress={closeModal}
+                  style={styles.cancelButton}
+                  contentStyle={styles.modalButtonContent}
+                  labelStyle={styles.cancelButtonText}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  mode="contained"
+                  onPress={handleSave}
+                  style={styles.saveButton}
+                  contentStyle={styles.modalButtonContent}
+                  labelStyle={styles.saveButtonText}
+                >
+                  {editingItem ? "Save changes" : "Add log"}
+                </Button>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
       </Modal>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ask Miso"
-        style={styles.chatFab}
-        onPress={() => setChatVisible(true)}
-      >
-        <Image
-          source={mascotImages.chat}
-          style={styles.chatFabImage}
-          contentFit="cover"
-          accessibilityLabel="Chatbot icon"
-        />
-      </Pressable>
 
       <MisoChatModal
         visible={chatVisible}
@@ -288,102 +528,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  mascotSection: {
-    paddingTop: 8,
-  },
-  searchWrap: {
-    paddingBottom: 12,
-  },
-  searchInput: {
-    backgroundColor: colors.surface,
-  },
-  searchOutline: {
-    borderRadius: 12,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 4,
-    paddingBottom: 12,
-  },
-  title: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 22,
-    fontWeight: "bold",
-    color: colors.textPrimary,
-    marginRight: 4,
-  },
-  addButton: {
-    borderRadius: 14,
-    backgroundColor: colors.management,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.managementDark,
-    flexShrink: 0,
-  },
-  addButtonContent: {
-    flexDirection: "row-reverse",
-    paddingHorizontal: 10,
-    minHeight: 40,
-  },
-  addButtonLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
   scrollView: {
     flex: 1,
   },
-  scrollContent: {},
-  card: {
-    marginBottom: 12,
-    borderRadius: 16,
-    elevation: 2,
-    backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  cardContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  itemTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: 6,
-  },
-  itemDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  itemDate: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  cardActions: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
-  emptyState: {
-    paddingVertical: 48,
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textMuted,
+  scrollContent: {
+    paddingTop: 18,
+    gap: 14,
   },
   centered: {
     justifyContent: "center",
     alignItems: "center",
+  },
+  loadingIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+    marginBottom: 14,
   },
   loadingText: {
     fontSize: 16,
@@ -395,59 +558,413 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 24,
   },
+  pressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.985 }],
+  },
+  actionPressed: {
+    opacity: 0.55,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    letterSpacing: -0.55,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
+  },
+  summaryCard: {
+    minHeight: 144,
+    paddingHorizontal: 16,
+    paddingTop: 15,
+    paddingBottom: 13,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: colors.primary,
+    boxShadow: "0 4px 12px rgba(22, 108, 67, 0.12)",
+  },
+  summaryTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  metricsRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginTop: 13,
+  },
+  metric: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  metricDivider: {
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.33)",
+  },
+  metricValue: {
+    fontSize: 19,
+    lineHeight: 23,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    fontVariant: ["tabular-nums"],
+    marginTop: 3,
+  },
+  metricLabel: {
+    maxWidth: "100%",
+    fontSize: 9,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.84)",
+    marginTop: 1,
+  },
+  searchInput: {
+    height: 50,
+    backgroundColor: colors.surface,
+    fontSize: 14,
+  },
+  searchOutline: {
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchContent: {
+    minHeight: 50,
+  },
+  misoBanner: {
+    minHeight: 108,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.statStockBorder,
+  },
+  misoImageWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+  },
+  misoImage: {
+    width: "100%",
+    height: "100%",
+  },
+  misoCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  misoTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  misoText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  misoButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    marginTop: 8,
+  },
+  misoButtonText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  listSection: {
+    gap: 10,
+  },
+  sectionHeader: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  resultsCount: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.primary,
+    backgroundColor: colors.surfaceWarm,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontVariant: ["tabular-nums"],
+  },
+  logCard: {
+    minHeight: 92,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+    borderRadius: 15,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    boxShadow: "0 1px 3px rgba(31, 55, 40, 0.06)",
+  },
+  logIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  logCategory: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: colors.primary,
+    marginTop: 5,
+  },
+  itemTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 19,
+    color: colors.textPrimary,
+  },
+  logTrailing: {
+    alignSelf: "stretch",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    paddingVertical: 1,
+  },
+  datePill: {
+    maxWidth: 86,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.statStockBorder,
+  },
+  itemDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  itemDate: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: colors.primary,
+    fontVariant: ["tabular-nums"],
+  },
+  cardActions: {
+    flexDirection: "row",
+    gap: 2,
+  },
+  cardAction: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+    backgroundColor: colors.background,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  emptySubtext: {
+    maxWidth: 280,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    color: colors.textMuted,
+    marginTop: 5,
+  },
+  emptyButton: {
+    minHeight: 38,
+    justifyContent: "center",
+    paddingHorizontal: 15,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    marginTop: 15,
+  },
+  emptyButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  bottomAddButton: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    boxShadow: "0 4px 10px rgba(22, 108, 67, 0.18)",
+  },
+  bottomAddButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(21, 31, 24, 0.48)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
   },
   modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 420,
     maxHeight: "88%",
+    padding: 20,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    boxShadow: "0 18px 50px rgba(21, 31, 24, 0.22)",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  modalHeaderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+  },
+  modalHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  modalEyebrow: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+    color: colors.primary,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 21,
+    fontWeight: "700",
     color: colors.textPrimary,
-    marginBottom: 20,
+    letterSpacing: -0.25,
+  },
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
+  modalDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textSecondary,
+    marginTop: 14,
+    marginBottom: 16,
   },
   saveErrorText: {
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.error,
-    marginBottom: 16,
-    backgroundColor: "#FEE2E2",
-    padding: 12,
-    borderRadius: 8,
+    marginBottom: 14,
+    backgroundColor: "#FFF1EF",
+    padding: 11,
+    borderRadius: 11,
   },
   modalInput: {
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    marginBottom: 13,
+  },
+  modalInputOutline: {
+    borderRadius: 14,
+    borderColor: colors.border,
+  },
+  descriptionInput: {
+    minHeight: 116,
   },
   modalActions: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 8,
+    gap: 10,
+    marginTop: 4,
   },
-  modalButton: {
-    minWidth: 100,
+  cancelButton: {
+    flex: 1,
+    borderRadius: 999,
+    borderColor: colors.border,
   },
-  chatFab: {
-    position: "absolute",
-    right: 18,
-    bottom: 22,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    overflow: "hidden",
-    backgroundColor: colors.surface,
-    elevation: 6,
+  saveButton: {
+    flex: 1.25,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
   },
-  chatFabImage: {
-    width: "100%",
-    height: "100%",
+  modalButtonContent: {
+    minHeight: 46,
+  },
+  cancelButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.textSecondary,
+  },
+  saveButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
 })

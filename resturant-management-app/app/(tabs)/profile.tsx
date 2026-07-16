@@ -90,6 +90,7 @@ export default function Profile() {
   const upcomingShifts = shifts
     .filter((s) => new Date(s.ends_at) >= new Date())
     .slice(0, 5)
+  const upcomingShiftCount = shifts.filter((s) => new Date(s.ends_at) >= new Date()).length
 
   useEffect(() => {
     // Read once on mount; add onAuthStateChange if you need live updates after login elsewhere.
@@ -256,49 +257,89 @@ export default function Profile() {
     <SafeAreaView style={styles.safeRoot} edges={["top", "left", "right"]}>
       <ScrollView
         style={styles.container}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
           { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
         ]}
       >
         <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="person" size={24} color={colors.primary} />
+          <Text style={styles.title}>Profile</Text>
+        </View>
+
+        <View style={styles.profileHero}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Change profile photo"
+            onPress={handleChangeAvatar}
+            disabled={uploadingAvatar}
+            style={({ pressed }) => [
+              styles.avatar,
+              pressed && styles.avatarPressed,
+            ]}
+          >
+            {uploadingAvatar ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : myMember?.avatar_url ? (
+              <Image
+                source={{ uri: myMember.avatar_url }}
+                style={styles.avatarImage}
+                contentFit="cover"
+                accessibilityLabel={myMember.display_name ?? "Profile photo"}
+              />
+            ) : (
+              <Text style={styles.avatarText}>{initial}</Text>
+            )}
+            <View style={styles.avatarEditBadge}>
+              <Ionicons name="camera" size={17} color="#FFFFFF" />
             </View>
-            <Text style={styles.title}>Settings</Text>
+          </Pressable>
+          <View style={styles.profileTextCol}>
+            <Text style={styles.profileName} numberOfLines={1}>
+              {myMember?.display_name?.trim() || "Restaurant teammate"}
+            </Text>
+            <Text style={styles.profileEmail} numberOfLines={2}>
+              {userEmail ?? "Not signed in"}
+            </Text>
+            <View style={styles.roleChip}>
+              <Text style={styles.roleChipText}>{myRole ?? "staff"}</Text>
+            </View>
           </View>
         </View>
 
-        <Card style={styles.card} mode="elevated">
-          <Card.Content style={styles.cardContent}>
-            <View style={styles.profileBlock}>
-              <Pressable onPress={handleChangeAvatar} disabled={uploadingAvatar} style={styles.avatar}>
-                {uploadingAvatar ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : myMember?.avatar_url ? (
-                  <Image source={{ uri: myMember.avatar_url }} style={styles.avatarImage} contentFit="cover" />
-                ) : (
-                  <Text style={styles.avatarText}>{initial}</Text>
-                )}
-                <View style={styles.avatarEditBadge}>
-                  <Ionicons name="camera" size={12} color="#FFFFFF" />
-                </View>
-              </Pressable>
-              <View style={styles.profileTextCol}>
-                <Text style={styles.profileEmail} numberOfLines={2}>
-                  {userEmail ?? "Not signed in"}
-                </Text>
-                <Text style={styles.profileHint}>
-                  {myRole ? `Restaurant ${myRole}` : "Restaurant staff account"}
+        <Card style={[styles.card, styles.workspaceCard]} mode="contained">
+          <Card.Content style={styles.workspaceContent}>
+            <View style={styles.workspaceTopRow}>
+              <View style={styles.workspaceIcon}>
+                <Ionicons name="storefront-outline" size={23} color={colors.primary} />
+              </View>
+              <View style={styles.workspaceCopy}>
+                <Text style={styles.workspaceTitle}>Restaurant workspace</Text>
+                <Text style={styles.workspaceMeta}>
+                  {members.length} member{members.length === 1 ? "" : "s"}
+                  {"  •  "}
+                  {upcomingShiftCount} upcoming shift{upcomingShiftCount === 1 ? "" : "s"}
                 </Text>
               </View>
             </View>
           </Card.Content>
         </Card>
 
-        <Text style={styles.groupLabel}>Team</Text>
+        <Text style={styles.groupLabel}>Team &amp; scheduling</Text>
         <Card style={styles.card} mode="elevated">
+          <View style={styles.sectionCardHeader}>
+            <View style={styles.sectionCardIcon}>
+              <Ionicons name="people-outline" size={21} color={colors.primary} />
+            </View>
+            <View style={styles.sectionCardCopy}>
+              <Text style={styles.sectionCardTitle}>Team members</Text>
+            </View>
+            <Text style={styles.sectionCardCount}>
+              {members.length} member{members.length === 1 ? "" : "s"}
+            </Text>
+          </View>
+          <View style={styles.sectionDivider} />
           {members.map((member, index) => (
             <View key={member.id}>
               {index > 0 && <RowDivider />}
@@ -329,6 +370,8 @@ export default function Profile() {
                 icon="person-add-outline"
                 iconColor={colors.primary}
                 label="Invite teammate"
+                description="Create and share a secure join link"
+                actionLabel="Invite"
                 onPress={openInviteModal}
                 showChevron={false}
               />
@@ -339,9 +382,26 @@ export default function Profile() {
         {canInvite && pendingInvites.length > 0 && (
           <Card style={styles.card} mode="elevated">
             <Card.Content style={styles.cardContentTight}>
-              <Text style={styles.label}>Pending invites</Text>
+              <View style={styles.pendingHeader}>
+                <View style={styles.pendingHeaderIcon}>
+                  <Ionicons name="mail-unread-outline" size={19} color={colors.managementDark} />
+                </View>
+                <View style={styles.sectionCardCopy}>
+                  <Text style={styles.sectionCardTitle}>Pending invitations</Text>
+                  <Text style={styles.sectionCardSubtitle}>Waiting to join your workspace</Text>
+                </View>
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{pendingInvites.length}</Text>
+                </View>
+              </View>
+              <View style={styles.pendingDivider} />
               {pendingInvites.map((invite) => (
                 <View key={invite.id} style={styles.pendingInviteRow}>
+                  <View style={styles.pendingAvatar}>
+                    <Text style={styles.pendingAvatarText}>
+                      {invite.email.trim().charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
                   <View style={styles.pendingInviteTextCol}>
                     <Text style={styles.value} numberOfLines={1}>{invite.email}</Text>
                     <Text style={styles.meta}>Invited as {invite.role}</Text>
@@ -357,8 +417,11 @@ export default function Profile() {
                         notify(result === "copied" ? "Link copied" : "Shared")
                       )
                     }
+                    style={styles.copyButton}
+                    labelStyle={styles.copyButtonLabel}
+                    textColor={colors.primary}
                   >
-                    Copy Link
+                    Copy
                   </Button>
                 </View>
               ))}
@@ -366,11 +429,19 @@ export default function Profile() {
           </Card>
         )}
 
-        <Text style={styles.groupLabel}>Shifts</Text>
+        <Text style={styles.subgroupLabel}>Upcoming shifts</Text>
         <Card style={styles.card} mode="elevated">
           {upcomingShifts.length === 0 ? (
             <Card.Content style={styles.cardContentTight}>
-              <Text style={styles.meta}>No upcoming shifts scheduled.</Text>
+              <View style={styles.emptyShift}>
+                <View style={styles.emptyShiftIcon}>
+                  <Ionicons name="calendar-clear-outline" size={22} color={colors.primary} />
+                </View>
+                <View style={styles.pendingInviteTextCol}>
+                  <Text style={styles.emptyShiftTitle}>No upcoming shifts</Text>
+                  <Text style={styles.emptyShiftText}>The next scheduled shift will appear here.</Text>
+                </View>
+              </View>
             </Card.Content>
           ) : (
             upcomingShifts.map((shift, index) => {
@@ -379,6 +450,20 @@ export default function Profile() {
                 <View key={shift.id}>
                   {index > 0 && <RowDivider />}
                   <View style={styles.shiftRow}>
+                    <View style={styles.shiftAvatar}>
+                      {member?.avatar_url ? (
+                        <Image
+                          source={{ uri: member.avatar_url }}
+                          style={styles.shiftAvatarImage}
+                          contentFit="cover"
+                          accessibilityLabel={member.display_name ?? "Team member photo"}
+                        />
+                      ) : (
+                        <Text style={styles.shiftAvatarText}>
+                          {(member?.display_name ?? "?").trim().charAt(0).toUpperCase()}
+                        </Text>
+                      )}
+                    </View>
                     <View style={styles.pendingInviteTextCol}>
                       <Text style={styles.value} numberOfLines={1}>
                         {member?.display_name ?? "Team member"}
@@ -398,6 +483,8 @@ export default function Profile() {
                 icon="calendar-outline"
                 iconColor={colors.tasks}
                 label="Schedule a shift"
+                description="Add a shift to the shared schedule"
+                actionLabel="Add"
                 onPress={openShiftModal}
                 showChevron={false}
               />
@@ -405,12 +492,13 @@ export default function Profile() {
           )}
         </Card>
 
-        <Text style={styles.groupLabel}>Shortcuts</Text>
+        <Text style={styles.groupLabel}>Workspace shortcuts</Text>
         <Card style={styles.card} mode="elevated">
           <MenuRow
             icon="home"
             iconColor={colors.primary}
             label="Home dashboard"
+            description="Today&apos;s overview and priorities"
             onPress={() => {
               triggerNavHaptic()
               router.push("./index")
@@ -421,6 +509,7 @@ export default function Profile() {
             icon="albums"
             iconColor={colors.inventory}
             label="Inventory log"
+            description="Review stock levels and storage"
             onPress={() => {
               triggerNavHaptic()
               router.push("/(tabs)/inventory-log")
@@ -431,6 +520,7 @@ export default function Profile() {
             icon="wallet"
             iconColor={colors.finance}
             label="Finance"
+            description="Track revenue and expenses"
             onPress={() => {
               triggerNavHaptic()
               router.push("/(tabs)/finance")
@@ -441,6 +531,7 @@ export default function Profile() {
             icon="document-text"
             iconColor={colors.management}
             label="Management logs"
+            description="Maintenance, incidents, and daily notes"
             onPress={() => {
               triggerNavHaptic()
               router.push("/(tabs)/management-log")
@@ -452,12 +543,14 @@ export default function Profile() {
         <Card style={styles.card} mode="elevated">
           <View style={styles.switchRow}>
             <View style={styles.switchRowLeft}>
-              <Ionicons
-                name="notifications-outline"
-                size={22}
-                color={colors.textSecondary}
-                style={styles.switchIcon}
-              />
+              <View style={styles.preferenceIconWrap}>
+                <Ionicons
+                  name="notifications-outline"
+                  size={21}
+                  color={colors.primary}
+                  style={styles.switchIcon}
+                />
+              </View>
               <View style={styles.switchLabels}>
                 <Text style={styles.switchTitle}>Low-stock reminders</Text>
                 <Text style={styles.switchSubtitle}>
@@ -480,7 +573,6 @@ export default function Profile() {
             iconColor={colors.secondary}
             label="Help & tips"
             onPress={showHelp}
-            showChevron={false}
           />
           <RowDivider />
           <MenuRow
@@ -488,7 +580,6 @@ export default function Profile() {
             iconColor={colors.primary}
             label="About us"
             onPress={() => setAboutVisible(true)}
-            showChevron={false}
           />
           <RowDivider />
           <MenuRow
@@ -496,46 +587,59 @@ export default function Profile() {
             iconColor={colors.settings}
             label="Contact support"
             onPress={openSupportEmail}
-            showChevron={false}
           />
         </Card>
 
-        <Text style={styles.groupLabel}>Account</Text>
+        <Text style={styles.groupLabel}>Account details</Text>
         <Card style={styles.card} mode="elevated">
           <Card.Content style={styles.cardContentTight}>
-            <Text style={styles.label}>Email</Text>
+            <View style={styles.accountRow}>
+              <View style={styles.accountIcon}>
+                <Ionicons name="lock-closed-outline" size={21} color={colors.primary} />
+              </View>
+              <View style={styles.pendingInviteTextCol}>
+            <Text style={styles.label}>Signed in with</Text>
             <Text style={styles.value}>{userEmail ?? "—"}</Text>
             <Text style={styles.meta}>
               Sign-in is managed with Supabase Authentication.
             </Text>
+              </View>
+            </View>
           </Card.Content>
         </Card>
 
-        <Text style={styles.groupLabel}>About</Text>
+        <Text style={styles.subgroupLabel}>App information</Text>
         <Card style={styles.card} mode="elevated">
           <Card.Content style={styles.cardContentTight}>
             <View style={styles.aboutRow}>
-              <Text style={styles.label}>App</Text>
+              <Text style={styles.infoRowLabel}>App</Text>
               <Text style={styles.value}>{appName}</Text>
             </View>
             <View style={[styles.aboutRow, styles.aboutRowSpaced]}>
-              <Text style={styles.label}>Version</Text>
+              <Text style={styles.infoRowLabel}>Version</Text>
               <Text style={styles.value}>{appVersion}</Text>
             </View>
           </Card.Content>
         </Card>
 
-        <Button
-          mode="contained"
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
+          accessibilityState={{ disabled: loggingOut, busy: loggingOut }}
           onPress={handleLogout}
           disabled={loggingOut}
-          loading={loggingOut}
-          style={styles.logoutButton}
-          labelStyle={styles.logoutLabel}
-          icon="logout"
+          style={({ pressed }) => [
+            styles.logoutButton,
+            pressed && !loggingOut && styles.logoutButtonPressed,
+          ]}
         >
-          Logout
-        </Button>
+          {loggingOut ? (
+            <ActivityIndicator size="small" color={colors.error} />
+          ) : (
+            <Ionicons name="log-out-outline" size={18} color={colors.error} />
+          )}
+          <Text style={styles.logoutLabel}>{loggingOut ? "Logging out…" : "Log out"}</Text>
+        </Pressable>
       </ScrollView>
 
       <Modal
@@ -553,6 +657,7 @@ export default function Profile() {
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
           <View style={styles.aboutModalCard}>
+            <View style={styles.modalHandle} />
             <View style={styles.aboutModalImageWrap}>
               <Image
                 source={mascotImages.about}
@@ -603,7 +708,12 @@ export default function Profile() {
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
           <View style={styles.aboutModalCard}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalIcon}>
+              <Ionicons name="person-add-outline" size={25} color={colors.primary} />
+            </View>
             <Text style={styles.aboutModalTitle}>Invite teammate</Text>
+            <Text style={styles.modalSubtitle}>Choose their role, then share the secure invite link.</Text>
             <TextInput
               label="Email"
               value={inviteEmail}
@@ -655,8 +765,13 @@ export default function Profile() {
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
           <View style={styles.aboutModalCard}>
+            <View style={styles.modalHandle} />
             <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalIcon}>
+                <Ionicons name="calendar-outline" size={25} color={colors.primary} />
+              </View>
               <Text style={styles.aboutModalTitle}>Schedule a shift</Text>
+              <Text style={styles.modalSubtitle}>Add a team member to the upcoming schedule.</Text>
               <Text style={styles.assigneeLabel}>For</Text>
               <View style={styles.assigneeChipRow}>
                 {members.map((m) => (
@@ -732,12 +847,16 @@ function MenuRow({
   icon,
   iconColor,
   label,
+  description,
+  actionLabel,
   onPress,
   showChevron = true,
 }: {
   icon: keyof typeof Ionicons.glyphMap
   iconColor: string
   label: string
+  description?: string
+  actionLabel?: string
   onPress: () => void
   showChevron?: boolean
 }) {
@@ -749,10 +868,17 @@ function MenuRow({
       <View style={[styles.menuIconWrap, { borderColor: `${iconColor}55` }]}>
         <Ionicons name={icon} size={22} color={iconColor} />
       </View>
-      <Text style={styles.menuLabel}>{label}</Text>
-      {showChevron && (
+      <View style={styles.menuCopy}>
+        <Text style={styles.menuLabel}>{label}</Text>
+        {description && <Text style={styles.menuDescription}>{description}</Text>}
+      </View>
+      {actionLabel ? (
+        <View style={styles.menuActionPill}>
+          <Text style={styles.menuActionText}>{actionLabel}</Text>
+        </View>
+      ) : showChevron ? (
         <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-      )}
+      ) : null}
     </Pressable>
   )
 }
@@ -767,117 +893,210 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingTop: 8,
+    paddingTop: 12,
   },
   header: {
-    marginBottom: 16,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: colors.surfaceWarm,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(88, 204, 2, 0.4)",
+    marginBottom: 2,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: "800",
     color: colors.textPrimary,
+    letterSpacing: -0.7,
   },
   groupLabel: {
-    fontSize: 13,
+    fontSize: 17,
     fontWeight: "700",
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    marginTop: 4,
-    marginLeft: 4,
+    color: colors.primary,
+    letterSpacing: -0.2,
+    marginBottom: 7,
+    marginTop: 10,
+    marginLeft: 2,
+  },
+  subgroupLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.primary,
+    letterSpacing: -0.15,
+    marginBottom: 7,
+    marginTop: 3,
+    marginLeft: 2,
   },
   card: {
-    marginBottom: 12,
-    borderRadius: 16,
-    elevation: 2,
+    marginBottom: 10,
+    borderRadius: 15,
+    elevation: 0,
     backgroundColor: colors.surface,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
-  },
-  cardContent: {
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    boxShadow: "0 1px 2px rgba(31, 55, 40, 0.05)",
   },
   cardContentTight: {
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
   },
-  profileBlock: {
-    flexDirection: "row",
+  profileHero: {
     alignItems: "center",
-    gap: 16,
+    paddingTop: 2,
+    paddingBottom: 16,
+    gap: 12,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     backgroundColor: colors.surfaceWarm,
-    borderWidth: 2,
-    borderColor: colors.primary,
+    borderWidth: 4,
+    borderColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
+    boxShadow: "0 3px 10px rgba(31, 55, 40, 0.14)",
+  },
+  avatarPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.98 }],
   },
   avatarImage: {
     width: "100%",
     height: "100%",
-    borderRadius: 16,
+    borderRadius: 55,
   },
   avatarText: {
-    fontSize: 22,
+    fontSize: 40,
     fontWeight: "800",
     color: colors.primary,
   },
   avatarEditBadge: {
     position: "absolute",
-    bottom: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    bottom: 2,
+    right: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.surface,
   },
   profileTextCol: {
+    width: "100%",
+    alignItems: "center",
+  },
+  profileName: {
+    maxWidth: "100%",
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  profileEmail: {
+    maxWidth: "100%",
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  roleChip: {
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.statStockBorder,
+    marginTop: 8,
+  },
+  roleChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.primary,
+    textTransform: "capitalize",
+  },
+  workspaceCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  workspaceContent: {
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+  },
+  workspaceTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  workspaceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+  },
+  workspaceCopy: {
     flex: 1,
     minWidth: 0,
   },
-  profileEmail: {
-    fontSize: 17,
-    fontWeight: "700",
+  workspaceTitle: {
+    fontSize: 14,
+    fontWeight: "600",
     color: colors.textPrimary,
   },
-  profileHint: {
-    fontSize: 14,
+  workspaceMeta: {
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
+  },
+  sectionCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 13,
+  },
+  sectionCardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+  },
+  sectionCardCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sectionCardTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  sectionCardSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  sectionCardCount: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontVariant: ["tabular-nums"],
+  },
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
   },
   teamRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+    gap: 10,
   },
   teamRowLeft: {
     flex: 1,
@@ -886,16 +1105,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   teamAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.surfaceWarm,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.statStockBorder,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    marginRight: 10,
+    marginRight: 9,
   },
   teamAvatarImage: {
     width: "100%",
@@ -907,28 +1126,82 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   teamMemberName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: colors.textPrimary,
     flexShrink: 1,
   },
   teamYouTag: {
-    fontSize: 13,
-    color: colors.textMuted,
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: "600",
   },
   teamRoleBadge: {
-    fontSize: 12,
+    overflow: "hidden",
+    fontSize: 11,
     fontWeight: "700",
     color: colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
+    backgroundColor: colors.surfaceWarm,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  pendingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pendingHeaderIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.statLogsBg,
+  },
+  countPill: {
+    minWidth: 27,
+    height: 27,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    backgroundColor: colors.statLogsBg,
+  },
+  countPillText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.managementDark,
+    fontVariant: ["tabular-nums"],
+  },
+  pendingDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginTop: 11,
   },
   pendingInviteRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 10,
+    gap: 10,
+    paddingVertical: 9,
+  },
+  pendingAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.statLogsBg,
+    borderWidth: 1,
+    borderColor: colors.statLogsBorder,
+  },
+  pendingAvatarText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: colors.managementDark,
   },
   pendingInviteTextCol: {
     flex: 1,
@@ -937,6 +1210,15 @@ const styles = StyleSheet.create({
   inviteInput: {
     marginBottom: 16,
     backgroundColor: colors.surface,
+  },
+  copyButton: {
+    borderRadius: 999,
+    borderColor: colors.statStockBorder,
+  },
+  copyButtonLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginHorizontal: 8,
   },
   inviteRolePicker: {
     marginBottom: 20,
@@ -947,8 +1229,53 @@ const styles = StyleSheet.create({
   shiftRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    gap: 11,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+  },
+  shiftAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.statStockBorder,
+  },
+  shiftAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  shiftAvatarText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.primary,
+  },
+  emptyShift: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  emptyShiftIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+  },
+  emptyShiftTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  emptyShiftText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   assigneeLabel: {
     fontSize: 13,
@@ -966,41 +1293,66 @@ const styles = StyleSheet.create({
   },
   assigneeChip: {
     marginBottom: 4,
+    backgroundColor: colors.surfaceWarm,
   },
   menuRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
+    minHeight: 56,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    gap: 10,
   },
   menuIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.background,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 0,
+  },
+  menuCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   menuLabel: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: colors.textPrimary,
+  },
+  menuDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  menuActionPill: {
+    minWidth: 45,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceWarm,
+  },
+  menuActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.primary,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginLeft: 68,
+    marginLeft: 57,
   },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    minHeight: 58,
     paddingVertical: 8,
-    paddingHorizontal: 16,
-    paddingLeft: 14,
+    paddingHorizontal: 13,
   },
   switchRowLeft: {
     flex: 1,
@@ -1010,6 +1362,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   switchIcon: {
+    marginRight: 0,
+  },
+  preferenceIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
     marginRight: 10,
   },
   switchLabels: {
@@ -1017,7 +1378,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   switchTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: colors.textPrimary,
   },
@@ -1025,22 +1386,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
+    lineHeight: 16,
   },
   label: {
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: "600",
     color: colors.textMuted,
     marginBottom: 4,
   },
   value: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.textPrimary,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   meta: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 12,
-    lineHeight: 18,
+    marginTop: 3,
+    lineHeight: 17,
+  },
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  accountIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+  },
+  infoRowLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textSecondary,
   },
   aboutRow: {
     flexDirection: "row",
@@ -1055,47 +1436,89 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   logoutButton: {
-    marginTop: 20,
-    borderRadius: 14,
-    backgroundColor: colors.error,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.errorDark,
+    minHeight: 44,
+    marginTop: 2,
+    marginBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
   },
   logoutLabel: {
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.error,
+  },
+  logoutButtonPressed: {
+    opacity: 0.65,
   },
   aboutModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(22, 35, 27, 0.38)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 18,
   },
   aboutModalCard: {
     width: "100%",
     maxWidth: 400,
-    maxHeight: "85%",
+    maxHeight: "88%",
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 2,
+    borderRadius: 26,
+    padding: 22,
+    borderWidth: 1,
     borderColor: colors.border,
-    elevation: 8,
+    elevation: 0,
+    boxShadow: "0 12px 34px rgba(22, 35, 27, 0.22)",
+  },
+  modalHandle: {
+    alignSelf: "center",
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginBottom: 16,
+  },
+  modalIcon: {
+    alignSelf: "center",
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.statStockBorder,
+    marginBottom: 12,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: -5,
+    marginBottom: 18,
   },
   aboutModalImageWrap: {
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "center",
+    minHeight: 150,
+    marginBottom: 14,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: colors.surfaceWarm,
   },
   aboutModalImage: {
     width: "100%",
-    height: 160,
+    height: 150,
   },
   aboutModalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    fontSize: 23,
+    fontWeight: "700",
     color: colors.textPrimary,
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 14,
+    letterSpacing: -0.3,
   },
   aboutModalScroll: {
     maxHeight: 280,
@@ -1107,10 +1530,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   aboutModalClose: {
-    borderRadius: 14,
+    borderRadius: 999,
     backgroundColor: colors.primary,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.primaryDark,
+    marginTop: 2,
   },
   aboutModalCloseLabel: {
     fontWeight: "700",

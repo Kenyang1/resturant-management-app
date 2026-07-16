@@ -2,14 +2,13 @@
  * Finance tab — revenue & expense entries with period totals and vs previous period.
  * Data: Supabase table `finance_entries` (see supabase-finance-entries.sql).
  */
-import { MascotBanner } from "@/components/MascotBanner"
 import { confirmAction } from "@/lib/alert"
 import { FinanceEntry, FinanceKind, useFinanceEntries } from "@/lib/hooks/useFinanceEntries"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
-import { mascotImages } from "@/lib/mascotImages"
 import { colors } from "@/lib/theme"
-import { useMemo, useState } from "react"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
+import { type ComponentProps, useMemo, useState } from "react"
 import {
   Keyboard,
   Modal,
@@ -20,9 +19,16 @@ import {
   View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { Button, Card, SegmentedButtons, Text, TextInput } from "react-native-paper"
+import { Button, Card, Text, TextInput } from "react-native-paper"
 
 type PeriodFilter = "all" | "month" | "week"
+type FinanceIconName = ComponentProps<typeof MaterialCommunityIcons>["name"]
+
+const periodOptions: { value: PeriodFilter; label: string }[] = [
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "all", label: "All time" },
+]
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
@@ -102,8 +108,20 @@ function pctChange(current: number, previous: number) {
   return ((current - previous) / previous) * 100
 }
 
+function getCategoryIcon(category: string, kind: FinanceKind): FinanceIconName {
+  const normalized = category.toLowerCase()
+  if (normalized.includes("sale") || normalized.includes("order")) return "cash-register"
+  if (normalized.includes("payroll") || normalized.includes("wage")) return "account-group-outline"
+  if (normalized.includes("utilit") || normalized.includes("electric")) return "lightning-bolt-outline"
+  if (normalized.includes("rent") || normalized.includes("lease")) return "store-outline"
+  if (normalized.includes("food") || normalized.includes("ingredient")) return "food-apple-outline"
+  if (normalized.includes("deliver") || normalized.includes("transport")) return "truck-outline"
+  if (normalized.includes("suppl")) return "package-variant-closed"
+  return kind === "revenue" ? "trending-up" : "receipt-text-outline"
+}
+
 export default function FinanceScreen() {
-  const { horizontal, scrollBottomPad, tabMascotHeight } = useMobileLayout()
+  const { horizontal, scrollBottomPad } = useMobileLayout()
   const { data: entries, loading, error, insert, update, remove } = useFinanceEntries()
   const [period, setPeriod] = useState<PeriodFilter>("month")
   const [searchQuery, setSearchQuery] = useState("")
@@ -140,6 +158,16 @@ export default function FinanceScreen() {
     if (period === "all" || !previousRange) return null
     return pctChange(totalsCurrent.net, totalsPrevious.net)
   }, [period, previousRange, totalsCurrent.net, totalsPrevious.net])
+
+  const revenueDeltaPct = useMemo(() => {
+    if (period === "all" || !previousRange) return null
+    return pctChange(totalsCurrent.revenue, totalsPrevious.revenue)
+  }, [period, previousRange, totalsCurrent.revenue, totalsPrevious.revenue])
+
+  const expenseDeltaPct = useMemo(() => {
+    if (period === "all" || !previousRange) return null
+    return pctChange(totalsCurrent.expense, totalsPrevious.expense)
+  }, [period, previousRange, totalsCurrent.expense, totalsPrevious.expense])
 
   const filteredEntries = useMemo(
     () => entries.filter((e) => matchesSearch(e, searchQuery)),
@@ -239,43 +267,15 @@ export default function FinanceScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={[styles.mascotSection, { paddingHorizontal: horizontal }]}>
-        <MascotBanner
-          source={mascotImages.finance}
-          height={tabMascotHeight}
-          accessibilityLabel="Chef cat mascot for finance tracking"
-        />
-      </View>
-
-      <View style={[styles.header, { paddingHorizontal: horizontal }]}>
-        <Text style={styles.title} numberOfLines={1}>
-          Finance
-        </Text>
-        <Button
-          mode="contained"
-          onPress={openAddModal}
-          style={styles.addButton}
-          contentStyle={styles.addButtonContent}
-          labelStyle={styles.addButtonLabel}
-          icon="plus"
-          compact
-        >
-          Add
-        </Button>
-      </View>
-
-      <View style={[styles.periodWrap, { paddingHorizontal: horizontal }]}>
-        <Text style={styles.periodLabel}>Summary period</Text>
-        <SegmentedButtons
-          value={period}
-          onValueChange={(v) => setPeriod(v as PeriodFilter)}
-          buttons={[
-            { value: "week", label: "Week" },
-            { value: "month", label: "Month" },
-            { value: "all", label: "All" },
-          ]}
-          style={styles.segmented}
-        />
+      <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title} numberOfLines={1}>
+              Finance
+            </Text>
+            <Text style={styles.subtitle}>Cash flow at a glance</Text>
+          </View>
+        </View>
       </View>
 
       <ScrollView
@@ -287,44 +287,141 @@ export default function FinanceScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, styles.summaryRevenue]}>
-            <Text style={styles.summaryLabel}>Revenue</Text>
-            <Text style={styles.summaryValue}>{money.format(totalsCurrent.revenue)}</Text>
+        <View style={styles.netCard}>
+          <View style={styles.netCopy}>
+            <Text style={styles.netLabel}>Net balance</Text>
+            <Text style={styles.netValue} numberOfLines={1} adjustsFontSizeToFit>
+              {money.format(totalsCurrent.net)}
+            </Text>
+            <View style={styles.netComparisonRow}>
+              <Text style={styles.netCompare}>
+                {period === "all" ? "All-time balance" : period === "month" ? "This month" : "This week"}
+              </Text>
+              {netDeltaPct != null ? (
+                <>
+                  <Text style={styles.netCompareDot}>•</Text>
+                  <MaterialCommunityIcons
+                    name={netDeltaPct >= 0 ? "arrow-up" : "arrow-down"}
+                    size={12}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.netDelta}>
+                    {Math.abs(netDeltaPct).toFixed(1)}% vs last {period === "month" ? "month" : "week"}
+                  </Text>
+                </>
+              ) : null}
+            </View>
           </View>
-          <View style={[styles.summaryCard, styles.summaryExpense]}>
-            <Text style={styles.summaryLabel}>Expenses</Text>
-            <Text style={styles.summaryValue}>{money.format(totalsCurrent.expense)}</Text>
+          <View style={styles.netChart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <MaterialCommunityIcons name="chart-line" size={66} color="#FFFFFF" />
           </View>
         </View>
 
-        <Card style={[styles.netCard, totalsCurrent.net >= 0 ? styles.netPositive : styles.netNegative]} mode="elevated">
-          <Card.Content style={styles.netCardContent}>
-            <Text style={styles.netLabel}>Net ({period === "all" ? "all time" : period === "month" ? "this month" : "this week"})</Text>
-            <Text style={styles.netValue}>{money.format(totalsCurrent.net)}</Text>
-            {period !== "all" && previousRange && (
-              <Text style={styles.netCompare}>
-                Prior {period === "month" ? "month" : "week"}: {money.format(totalsPrevious.net)}
-                {netDeltaPct != null && (
-                  <Text style={styles.netDelta}>
-                    {" "}
-                    ({netDeltaPct >= 0 ? "+" : ""}
-                    {netDeltaPct.toFixed(0)}% vs prior)
-                  </Text>
-                )}
-              </Text>
+        <View style={styles.summaryRow}>
+          <View style={[styles.summaryCard, styles.summaryRevenue]}>
+            <View style={styles.summaryTopRow}>
+              <View style={[styles.summaryIcon, styles.summaryRevenueIcon]}>
+                <MaterialCommunityIcons name="arrow-up" size={22} color="#FFFFFF" />
+              </View>
+              <View style={styles.summaryCopy}>
+                <Text style={styles.summaryLabel}>Revenue</Text>
+                <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit>
+                  {money.format(totalsCurrent.revenue)}
+                </Text>
+              </View>
+            </View>
+            {period === "all" ? (
+              <Text style={styles.summaryComparisonNeutral}>All-time total</Text>
+            ) : revenueDeltaPct == null ? (
+              <Text style={styles.summaryComparisonNeutral}>No prior-period baseline</Text>
+            ) : (
+              <View style={styles.summaryComparisonRow}>
+                <MaterialCommunityIcons
+                  name={revenueDeltaPct >= 0 ? "arrow-up" : "arrow-down"}
+                  size={13}
+                  color={revenueDeltaPct >= 0 ? colors.primaryDark : colors.error}
+                />
+                <Text
+                  style={[
+                    styles.summaryComparison,
+                    revenueDeltaPct < 0 && styles.summaryComparisonNegative,
+                  ]}
+                >
+                  {Math.abs(revenueDeltaPct).toFixed(1)}% vs last {period === "month" ? "month" : "week"}
+                </Text>
+              </View>
             )}
-          </Card.Content>
-        </Card>
+          </View>
+          <View style={[styles.summaryCard, styles.summaryExpense]}>
+            <View style={styles.summaryTopRow}>
+              <View style={[styles.summaryIcon, styles.summaryExpenseIcon]}>
+                <MaterialCommunityIcons name="arrow-down" size={22} color="#FFFFFF" />
+              </View>
+              <View style={styles.summaryCopy}>
+                <Text style={styles.summaryLabel}>Expenses</Text>
+                <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit>
+                  {money.format(totalsCurrent.expense)}
+                </Text>
+              </View>
+            </View>
+            {period === "all" ? (
+              <Text style={styles.summaryComparisonNeutral}>All-time total</Text>
+            ) : expenseDeltaPct == null ? (
+              <Text style={styles.summaryComparisonNeutral}>No prior-period baseline</Text>
+            ) : (
+              <View style={styles.summaryComparisonRow}>
+                <MaterialCommunityIcons
+                  name={expenseDeltaPct >= 0 ? "arrow-up" : "arrow-down"}
+                  size={13}
+                  color={expenseDeltaPct <= 0 ? colors.primaryDark : colors.error}
+                />
+                <Text
+                  style={[
+                    styles.summaryComparison,
+                    expenseDeltaPct > 0 && styles.summaryComparisonNegative,
+                  ]}
+                >
+                  {Math.abs(expenseDeltaPct).toFixed(1)}% vs last {period === "month" ? "month" : "week"}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
 
-        <View style={[styles.searchWrap, { marginHorizontal: 0 }]}>
+        <View style={styles.periodSection}>
+          <View style={styles.periodRow}>
+            {periodOptions.map((option) => {
+              const selected = period === option.value
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setPeriod(option.value)}
+                  style={({ pressed }) => [
+                    styles.periodButton,
+                    selected && styles.periodButtonSelected,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={[styles.periodButtonText, selected && styles.periodButtonTextSelected]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        </View>
+
+        <View style={styles.searchWrap}>
           <TextInput
             mode="outlined"
-            placeholder="Search category, notes, or amount"
+            placeholder="Search transactions"
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.searchInput}
             outlineStyle={styles.searchOutline}
+            contentStyle={styles.searchContent}
             left={<TextInput.Icon icon="magnify" />}
             right={
               searchQuery.length > 0 ? (
@@ -334,51 +431,109 @@ export default function FinanceScreen() {
           />
         </View>
 
-        <Text style={styles.listHeading}>All entries</Text>
+        <View style={styles.listHeader}>
+          <Text style={styles.listHeading}>Recent transactions</Text>
+          <View style={styles.entryCountPill}>
+            <Text style={styles.entryCountText}>{filteredEntries.length}</Text>
+          </View>
+        </View>
 
         {entries.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No entries yet</Text>
+            <View style={styles.emptyIcon}>
+              <MaterialCommunityIcons name="receipt-text-outline" size={24} color={colors.primary} />
+            </View>
+            <Text style={styles.emptyText}>No transactions yet</Text>
             <Text style={styles.emptySubtext}>Tap Add to log revenue or an expense</Text>
           </View>
         ) : filteredEntries.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No matching entries</Text>
+            <View style={styles.emptyIcon}>
+              <MaterialCommunityIcons name="magnify" size={25} color={colors.primary} />
+            </View>
+            <Text style={styles.emptyText}>No matching transactions</Text>
             <Text style={styles.emptySubtext}>Try another search or clear the filter</Text>
           </View>
         ) : (
           filteredEntries.map((item) => (
-            <Card key={item.id} style={styles.card} mode="elevated">
+            <Card key={item.id} style={styles.card} mode="contained">
               <Card.Content style={styles.cardContent}>
-                <View style={styles.cardTopRow}>
-                  <View style={[styles.kindPill, item.kind === "revenue" ? styles.kindRevenue : styles.kindExpense]}>
-                    <Text style={styles.kindPillText}>{item.kind === "revenue" ? "Revenue" : "Expense"}</Text>
+                <View
+                  style={[
+                    styles.categoryIcon,
+                    item.kind === "revenue" ? styles.categoryIconRevenue : styles.categoryIconExpense,
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={getCategoryIcon(item.category, item.kind)}
+                    size={24}
+                    color={item.kind === "revenue" ? colors.primaryDark : colors.error}
+                  />
+                </View>
+                <View style={styles.transactionCopy}>
+                  <Text style={styles.itemTitle} numberOfLines={1}>
+                    {item.category}
+                  </Text>
+                  {item.notes ? (
+                    <Text style={styles.itemDescription} numberOfLines={1}>
+                      {item.notes}
+                    </Text>
+                  ) : null}
+                  <View style={styles.transactionMetaRow}>
+                    <Text style={styles.itemDate}>{formatShortDate(item.occurred_on)}</Text>
                   </View>
-                  <Text style={[styles.amountText, item.kind === "expense" && styles.amountExpense]}>
+                </View>
+                <View style={styles.amountColumn}>
+                  <Text
+                    style={[
+                      styles.amountText,
+                      item.kind === "expense" ? styles.amountExpense : styles.amountRevenue,
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
                     {item.kind === "expense" ? "−" : "+"}
                     {money.format(item.amount)}
                   </Text>
+                  <View style={styles.transactionActions}>
+                    <Pressable
+                      onPress={() => openEditModal(item)}
+                      style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${item.category} transaction`}
+                      hitSlop={4}
+                    >
+                      <MaterialCommunityIcons name="pencil-outline" size={17} color={colors.textSecondary} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => confirmDelete(item)}
+                      style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${item.category} transaction`}
+                      hitSlop={4}
+                    >
+                      <MaterialCommunityIcons name="trash-can-outline" size={17} color={colors.error} />
+                    </Pressable>
+                  </View>
                 </View>
-                <Text style={styles.itemTitle}>{item.category}</Text>
-                {item.notes ? (
-                  <Text style={styles.itemDescription} numberOfLines={2}>
-                    {item.notes}
-                  </Text>
-                ) : null}
-                <Text style={styles.itemDate}>{formatShortDate(item.occurred_on)}</Text>
               </Card.Content>
-              <Card.Actions style={styles.cardActions}>
-                <Button mode="outlined" compact onPress={() => openEditModal(item)}>
-                  Edit
-                </Button>
-                <Button mode="outlined" compact onPress={() => confirmDelete(item)} textColor={colors.error}>
-                  Delete
-                </Button>
-              </Card.Actions>
             </Card>
           ))
         )}
       </ScrollView>
+
+      <View style={[styles.bottomActionBar, { paddingHorizontal: horizontal }]}>
+        <Button
+          mode="contained"
+          onPress={openAddModal}
+          style={styles.bottomAddButton}
+          contentStyle={styles.bottomAddButtonContent}
+          labelStyle={styles.bottomAddButtonLabel}
+          icon="plus"
+        >
+          Add transaction
+        </Button>
+      </View>
 
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
@@ -389,10 +544,23 @@ export default function FinanceScreen() {
           </View>
           <TouchableWithoutFeedback>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>{editingItem ? "Edit entry" : "Add entry"}</Text>
+              <View style={styles.modalHandle} />
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderIcon}>
+                  <MaterialCommunityIcons
+                    name={editingItem ? "pencil-outline" : "cash-plus"}
+                    size={22}
+                    color={colors.primary}
+                  />
+                </View>
+                <View style={styles.modalHeaderCopy}>
+                  <Text style={styles.modalTitle}>{editingItem ? "Edit transaction" : "Add transaction"}</Text>
+                  <Text style={styles.modalSubtitle}>Keep your daily cash flow up to date</Text>
+                </View>
+              </View>
               {saveError ? <Text style={styles.saveErrorText}>{saveError}</Text> : null}
 
-              <Text style={styles.fieldLabel}>Type</Text>
+              <Text style={styles.fieldLabel}>Transaction type</Text>
               <View style={styles.kindRow}>
                 <Pressable
                   onPress={() => setFormKind("revenue")}
@@ -402,6 +570,11 @@ export default function FinanceScreen() {
                     pressed && { opacity: 0.9 },
                   ]}
                 >
+                  <MaterialCommunityIcons
+                    name="arrow-down-left"
+                    size={18}
+                    color={formKind === "revenue" ? "#FFFFFF" : colors.primaryDark}
+                  />
                   <Text style={[styles.kindChoiceText, formKind === "revenue" && styles.kindChoiceTextActive]}>
                     Revenue
                   </Text>
@@ -414,6 +587,11 @@ export default function FinanceScreen() {
                     pressed && { opacity: 0.9 },
                   ]}
                 >
+                  <MaterialCommunityIcons
+                    name="arrow-up-right"
+                    size={18}
+                    color={formKind === "expense" ? "#FFFFFF" : colors.error}
+                  />
                   <Text style={[styles.kindChoiceText, formKind === "expense" && styles.kindChoiceTextActive]}>
                     Expense
                   </Text>
@@ -427,6 +605,7 @@ export default function FinanceScreen() {
                 mode="outlined"
                 keyboardType="decimal-pad"
                 style={styles.modalInput}
+                outlineStyle={styles.modalInputOutline}
               />
               <TextInput
                 label="Category"
@@ -434,6 +613,7 @@ export default function FinanceScreen() {
                 onChangeText={setFormCategory}
                 mode="outlined"
                 style={styles.modalInput}
+                outlineStyle={styles.modalInputOutline}
                 placeholder="e.g. Sales, Payroll, Utilities"
               />
               <TextInput
@@ -441,7 +621,8 @@ export default function FinanceScreen() {
                 value={formNotes}
                 onChangeText={setFormNotes}
                 mode="outlined"
-                style={styles.modalInput}
+                style={[styles.modalInput, styles.notesInput]}
+                outlineStyle={styles.modalInputOutline}
                 multiline
               />
               <TextInput
@@ -450,14 +631,20 @@ export default function FinanceScreen() {
                 onChangeText={setFormDate}
                 mode="outlined"
                 style={styles.modalInput}
+                outlineStyle={styles.modalInputOutline}
               />
 
               <View style={styles.modalActions}>
-                <Button mode="outlined" onPress={closeModal} style={[styles.modalButton, { marginRight: 12 }]}>
+                <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
                   Cancel
                 </Button>
-                <Button mode="contained" onPress={() => void handleSave()} style={styles.modalButton}>
-                  Save
+                <Button
+                  mode="contained"
+                  onPress={() => void handleSave()}
+                  style={[styles.modalButton, styles.modalSaveButton]}
+                  contentStyle={styles.modalButtonContent}
+                >
+                  {editingItem ? "Save changes" : "Add transaction"}
                 </Button>
               </View>
             </View>
@@ -473,219 +660,433 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  mascotSection: {
-    paddingTop: 8,
+  topContent: {
+    paddingTop: 13,
+    paddingBottom: 7,
   },
   header: {
+    minHeight: 58,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    gap: 10,
-    paddingTop: 4,
-    paddingBottom: 8,
+    justifyContent: "space-between",
   },
-  title: {
+  headerCopy: {
     flex: 1,
     minWidth: 0,
-    fontSize: 22,
-    fontWeight: "bold",
+    gap: 1,
+  },
+  title: {
+    fontSize: 29,
+    lineHeight: 35,
+    fontWeight: "800",
     color: colors.textPrimary,
-    marginRight: 4,
+    letterSpacing: -0.6,
   },
-  addButton: {
-    borderRadius: 14,
-    backgroundColor: colors.finance,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.financeDark,
-    flexShrink: 0,
-  },
-  addButtonContent: {
-    flexDirection: "row-reverse",
-    paddingHorizontal: 10,
-    minHeight: 40,
-  },
-  addButtonLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  periodWrap: {
-    paddingBottom: 12,
-  },
-  periodLabel: {
-    fontSize: 13,
-    fontWeight: "600",
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 20,
     color: colors.textSecondary,
-    marginBottom: 8,
-  },
-  segmented: {
-    backgroundColor: colors.surface,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingTop: 4,
+    paddingTop: 5,
+  },
+  netCard: {
+    minHeight: 132,
+    paddingVertical: 17,
+    paddingLeft: 20,
+    paddingRight: 14,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 17,
+    borderCurve: "continuous",
+    backgroundColor: colors.primary,
+    boxShadow: "0 4px 12px rgba(25, 95, 61, 0.18)",
+  },
+  netCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  netLabel: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  netValue: {
+    paddingTop: 2,
+    fontSize: 32,
+    lineHeight: 39,
+    fontWeight: "800",
+    letterSpacing: -0.7,
+    color: "#FFFFFF",
+    fontVariant: ["tabular-nums"],
+  },
+  netComparisonRow: {
+    minHeight: 20,
+    paddingTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  netCompare: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: "rgba(255,255,255,0.78)",
+    fontVariant: ["tabular-nums"],
+  },
+  netCompareDot: {
+    paddingHorizontal: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    color: "rgba(255,255,255,0.58)",
+  },
+  netDelta: {
+    flexShrink: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    fontVariant: ["tabular-nums"],
+  },
+  netChart: {
+    width: 78,
+    height: 84,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.96,
   },
   summaryRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   summaryCard: {
     flex: 1,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 2,
+    minWidth: 0,
+    minHeight: 112,
+    justifyContent: "space-between",
+    gap: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 12,
+    borderRadius: 15,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    backgroundColor: colors.surface,
+    boxShadow: "0 1px 3px rgba(31, 41, 35, 0.06)",
   },
   summaryRevenue: {
-    backgroundColor: colors.statStockBg,
     borderColor: colors.statStockBorder,
   },
   summaryExpense: {
-    backgroundColor: "#FFEBEE",
-    borderColor: "rgba(255, 75, 75, 0.35)",
+    borderColor: "rgba(201, 90, 82, 0.24)",
+  },
+  summaryTopRow: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  summaryIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  summaryRevenueIcon: {
+    backgroundColor: colors.primary,
+  },
+  summaryExpenseIcon: {
+    backgroundColor: "#E96919",
+  },
+  summaryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
   },
   summaryLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "500",
     color: colors.textPrimary,
   },
-  netCard: {
-    marginBottom: 16,
-    borderRadius: 16,
-    borderWidth: 2,
+  summaryValue: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "800",
+    color: colors.textPrimary,
+    letterSpacing: -0.25,
+    fontVariant: ["tabular-nums"],
+  },
+  summaryComparisonRow: {
+    minHeight: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  summaryComparison: {
+    flexShrink: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "700",
+    color: colors.primaryDark,
+    fontVariant: ["tabular-nums"],
+  },
+  summaryComparisonNegative: {
+    color: colors.error,
+  },
+  summaryComparisonNeutral: {
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "600",
+    color: colors.textMuted,
+  },
+  periodSection: {
+    marginBottom: 10,
+  },
+  periodRow: {
+    flexDirection: "row",
+    gap: 9,
+  },
+  periodButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  netPositive: {
-    borderColor: colors.statStockBorder,
-    backgroundColor: colors.statFinanceBg,
+  periodButtonSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
   },
-  netNegative: {
-    borderColor: "rgba(255, 75, 75, 0.35)",
-    backgroundColor: "#FFF5F5",
-  },
-  netCardContent: {
-    paddingVertical: 14,
-  },
-  netLabel: {
-    fontSize: 13,
+  periodButtonText: {
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: "600",
     color: colors.textSecondary,
   },
-  netValue: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    marginTop: 4,
-  },
-  netCompare: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
-  netDelta: {
+  periodButtonTextSelected: {
+    color: "#FFFFFF",
     fontWeight: "700",
-    color: colors.textPrimary,
+  },
+  pressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.985 }],
   },
   searchWrap: {
     marginBottom: 12,
   },
   searchInput: {
+    height: 44,
     backgroundColor: colors.surface,
+    fontSize: 14,
   },
   searchOutline: {
-    borderRadius: 12,
-  },
-  listHeading: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    marginBottom: 10,
-  },
-  card: {
-    marginBottom: 12,
-    borderRadius: 16,
-    elevation: 2,
-    backgroundColor: colors.surface,
-    borderWidth: 2,
+    borderRadius: 999,
+    borderWidth: 1,
     borderColor: colors.border,
   },
-  cardContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+  searchContent: {
+    minHeight: 44,
   },
-  cardTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  listHeader: {
+    minHeight: 28,
     marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
-  kindPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 2,
-  },
-  kindRevenue: {
-    backgroundColor: colors.statStockBg,
-    borderColor: colors.statStockBorder,
-  },
-  kindExpense: {
-    backgroundColor: "#FFEBEE",
-    borderColor: "rgba(255, 75, 75, 0.35)",
-  },
-  kindPillText: {
-    fontSize: 12,
+  listHeading: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "800",
     color: colors.textPrimary,
+    letterSpacing: -0.25,
+  },
+  entryCountPill: {
+    minWidth: 27,
+    minHeight: 23,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  entryCountText: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: colors.primaryDark,
+    fontVariant: ["tabular-nums"],
+  },
+  card: {
+    marginBottom: 8,
+    borderRadius: 14,
+    borderCurve: "continuous",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    boxShadow: "0 1px 4px rgba(26, 45, 34, 0.05)",
+    overflow: "hidden",
+  },
+  cardContent: {
+    minHeight: 82,
+    paddingVertical: 10,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  categoryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  categoryIconRevenue: {
+    backgroundColor: colors.statStockBg,
+  },
+  categoryIconExpense: {
+    backgroundColor: "#FFF1EF",
+  },
+  transactionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  itemTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  itemDescription: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textSecondary,
+  },
+  transactionMetaRow: {
+    paddingTop: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  itemDate: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textMuted,
+    fontVariant: ["tabular-nums"],
+  },
+  amountColumn: {
+    minWidth: 78,
+    maxWidth: 112,
+    alignSelf: "stretch",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    flexShrink: 1,
   },
   amountText: {
-    fontSize: 18,
+    maxWidth: "100%",
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "800",
+    textAlign: "right",
+    fontVariant: ["tabular-nums"],
+  },
+  amountRevenue: {
     color: colors.primary,
   },
   amountExpense: {
     color: colors.error,
   },
-  itemTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: 6,
+  transactionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 2,
   },
-  itemDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  itemDate: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  cardActions: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+  transactionAction: {
+    width: 28,
+    height: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
   },
   emptyState: {
-    paddingVertical: 36,
     alignItems: "center",
+    paddingVertical: 42,
+    paddingHorizontal: 24,
+    borderRadius: 18,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  emptyIcon: {
+    width: 50,
+    height: 50,
+    marginBottom: 12,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
   },
   emptyText: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    marginBottom: 4,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "700",
+    color: colors.textPrimary,
   },
   emptySubtext: {
+    paddingTop: 3,
     fontSize: 14,
+    lineHeight: 20,
     color: colors.textMuted,
+    textAlign: "center",
+  },
+  bottomActionBar: {
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: colors.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  bottomAddButton: {
+    width: "100%",
+    maxWidth: 560,
+    alignSelf: "center",
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    boxShadow: "0 3px 9px rgba(24, 107, 67, 0.18)",
+  },
+  bottomAddButtonContent: {
+    minHeight: 50,
+  },
+  bottomAddButtonLabel: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "700",
   },
   centered: {
     justifyContent: "center",
@@ -702,86 +1103,152 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   errorHint: {
+    paddingTop: 10,
     fontSize: 14,
+    lineHeight: 20,
     color: colors.textSecondary,
     textAlign: "center",
     paddingHorizontal: 24,
-    marginTop: 12,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(24, 32, 27, 0.38)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 16,
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
     width: "100%",
-    maxWidth: 400,
-    maxHeight: "88%",
+    maxWidth: 410,
+    maxHeight: "90%",
+    padding: 20,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    boxShadow: "0 16px 38px rgba(20, 38, 28, 0.20)",
+  },
+  modalHandle: {
+    width: 38,
+    height: 4,
+    alignSelf: "center",
+    marginBottom: 16,
+    borderRadius: 999,
+    backgroundColor: colors.border,
+  },
+  modalHeader: {
+    marginBottom: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  modalHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
+  },
+  modalHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 21,
+    lineHeight: 27,
+    fontWeight: "800",
     color: colors.textPrimary,
-    marginBottom: 16,
+    letterSpacing: -0.3,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
   },
   fieldLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.textSecondary,
     marginBottom: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: colors.textSecondary,
   },
   kindRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   kindChoice: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.border,
+    minHeight: 46,
+    paddingHorizontal: 12,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.background,
   },
   kindChoiceActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.surfaceWarm,
+    backgroundColor: colors.primary,
   },
   kindChoiceActiveExpense: {
     borderColor: colors.error,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: colors.error,
   },
   kindChoiceText: {
     fontSize: 14,
+    lineHeight: 19,
     fontWeight: "700",
     color: colors.textSecondary,
   },
   kindChoiceTextActive: {
-    color: colors.textPrimary,
+    color: "#FFFFFF",
   },
   saveErrorText: {
-    fontSize: 14,
-    color: colors.error,
-    marginBottom: 16,
-    backgroundColor: "#FEE2E2",
+    marginBottom: 14,
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: colors.error,
+    backgroundColor: "#FFF1EF",
+    borderWidth: 1,
+    borderColor: "rgba(201, 90, 82, 0.24)",
   },
   modalInput: {
-    marginBottom: 16,
+    marginBottom: 11,
+    backgroundColor: colors.surface,
+  },
+  modalInputOutline: {
+    borderRadius: 13,
+    borderWidth: 1,
+  },
+  notesInput: {
+    minHeight: 66,
   },
   modalActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 8,
+    gap: 10,
+    marginTop: 7,
   },
   modalButton: {
-    minWidth: 100,
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 12,
+  },
+  modalSaveButton: {
+    flex: 1.35,
+    backgroundColor: colors.primary,
+  },
+  modalButtonContent: {
+    minHeight: 48,
   },
 })
