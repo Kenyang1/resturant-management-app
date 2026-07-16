@@ -23,7 +23,7 @@ type UseSupabaseTableOptions<Row, T> = {
   mapRow: (row: Row) => T
 }
 
-export function useSupabaseTable<Row, T extends { id: number }>(
+export function useSupabaseTable<Row, T extends { id: string | number }>(
   options: UseSupabaseTableOptions<Row, T>
 ) {
   const { table, select, orderBy } = options
@@ -69,7 +69,7 @@ export function useSupabaseTable<Row, T extends { id: number }>(
   )
 
   const update = useCallback(
-    async (id: number, payload: Record<string, unknown>) => {
+    async (id: string | number, payload: Record<string, unknown>) => {
       const { error: err } = await supabase.from(table).update(payload).eq("id", id)
       if (err) throw err
       await refetch()
@@ -78,7 +78,7 @@ export function useSupabaseTable<Row, T extends { id: number }>(
   )
 
   const remove = useCallback(
-    async (id: number) => {
+    async (id: string | number) => {
       const { error: err } = await supabase.from(table).delete().eq("id", id)
       if (err) throw err
       await refetch()

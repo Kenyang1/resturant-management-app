@@ -32,13 +32,13 @@ const appTheme = {
   colors: {
     ...MD3LightTheme.colors,
     primary: colors.primary,
-    primaryContainer: "#E8F5E0",
+    primaryContainer: "#EAF5ED",
     secondary: colors.secondary,
-    secondaryContainer: "#E5F6FF",
+    secondaryContainer: "#EEF6F1",
     tertiary: colors.settings,
-    tertiaryContainer: "#F3E8FF",
+    tertiaryContainer: "#F1F4F0",
     surface: colors.surface,
-    surfaceVariant: "#F0F0F0",
+    surfaceVariant: "#F3F4F1",
     background: colors.background,
     error: colors.error,
     onPrimary: "#FFFFFF",
@@ -69,6 +69,7 @@ export default function RootLayout() {
         <Stack.Screen name="sign-up" />
         <Stack.Screen name="forgot-password" />
         <Stack.Screen name="reset-password" />
+        <Stack.Screen name="accept-invite" />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </PaperProvider>

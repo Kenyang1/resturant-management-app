@@ -1,58 +1,62 @@
 /**
- * Duolingo-inspired palette: bright green CTAs, soft gray canvas,
- * playful path colors, chunky friendly UI.
+ * Soft restaurant-operations palette: warm white canvas, leafy greens,
+ * and restrained status accents. Token names stay stable across the app.
  */
 export const colors = {
-  // Primary — Duolingo "go" green
-  primary: "#58CC02",
-  primaryDark: "#46A302",
-  secondary: "#1CB0F6",
+  // Primary action green
+  primary: "#247A50",
+  primaryDark: "#195F3D",
+  secondary: "#6D9D80",
 
   // Canvas & surfaces
-  background: "#F7F7F7",
+  background: "#FAFAF7",
   surface: "#FFFFFF",
-  surfaceWarm: "#F0FFF4",
+  surfaceWarm: "#EEF7F0",
 
-  // Navigation (white bar, green active — like Duolingo home row)
+  // Navigation
   navBackground: "#FFFFFF",
-  navActive: "#58CC02",
-  navInactive: "#AFAFAF",
+  navActive: "#247A50",
+  navInactive: "#737872",
 
-  // Text (Duolingo uses dark gray, not pure black)
-  textPrimary: "#3C3C3C",
-  textSecondary: "#777777",
-  textMuted: "#AFAFAF",
+  // Text
+  textPrimary: "#1E241F",
+  textSecondary: "#606760",
+  textMuted: "#90968F",
 
   // Status
-  success: "#58CC02",
-  error: "#FF4B4B",
-  warning: "#FFC800",
-  lowStock: "#FF9600",
+  success: "#2F8058",
+  error: "#C95A52",
+  warning: "#E8A126",
+  lowStock: "#E58B18",
 
-  // "Lesson path" accents (orange / blue / purple bubbles)
-  management: "#FF9600",
-  managementDark: "#E68600",
-  inventory: "#1CB0F6",
-  inventoryDark: "#1594D4",
-  settings: "#CE82FF",
-  settingsDark: "#B56FE6",
-  errorDark: "#DD3333",
+  // Feature accents remain distinct within the muted palette.
+  management: "#D9952D",
+  managementDark: "#B8791C",
+  inventory: "#3D8665",
+  inventoryDark: "#286C4D",
+  settings: "#78917E",
+  settingsDark: "#5D7463",
+  errorDark: "#A9433D",
 
   // Hairlines & shadows
-  border: "#E5E5E5",
-  shadow: "rgba(0, 0, 0, 0.12)",
+  border: "#DADDD7",
+  shadow: "rgba(31, 55, 40, 0.10)",
 
-  // Stat / highlight tiles (soft Duolingo-style fills)
-  statLogsBg: "#FFF8E6",
-  statLogsBorder: "rgba(255, 150, 0, 0.35)",
-  statItemsBg: "#E5F6FF",
-  statItemsBorder: "rgba(28, 176, 246, 0.35)",
-  statStockBg: "#E8F5E0",
-  statStockBorder: "rgba(88, 204, 2, 0.4)",
+  // Stat / highlight tiles
+  statLogsBg: "#FFF7E8",
+  statLogsBorder: "rgba(217, 149, 45, 0.30)",
+  statItemsBg: "#EEF6F1",
+  statItemsBorder: "rgba(61, 134, 101, 0.28)",
+  statStockBg: "#EAF5ED",
+  statStockBorder: "rgba(47, 128, 88, 0.30)",
 
-  // Finance tab (gold accent — distinct from management orange)
-  finance: "#FFB020",
-  financeDark: "#E69A00",
-  statFinanceBg: "#FFF8E8",
-  statFinanceBorder: "rgba(255, 176, 32, 0.45)",
+  // Finance tab (warm gold)
+  finance: "#C98D2E",
+  financeDark: "#A66F1D",
+  statFinanceBg: "#FFF8EA",
+  statFinanceBorder: "rgba(201, 141, 46, 0.32)",
+
+  // Tasks tab
+  tasks: "#2F8058",
+  tasksDark: "#216641",
 }

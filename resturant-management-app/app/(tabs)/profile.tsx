@@ -2,6 +2,12 @@
  * Profile / Settings tab — Supabase user info, navigation shortcuts, demo toggles, support, logout.
  */
 import { confirmAction, notify } from "@/lib/alert"
+import { getAcceptInviteUrl } from "@/lib/authRedirect"
+import { RestaurantRole, useRestaurantMembers } from "@/lib/hooks/useRestaurantMembers"
+import { useRestaurantInvites } from "@/lib/hooks/useRestaurantInvites"
+import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
+import { useShifts } from "@/lib/hooks/useShifts"
+import { shareOrCopyLink } from "@/lib/shareLink"
 import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
@@ -9,10 +15,12 @@ import { colors } from "@/lib/theme"
 import Constants from "expo-constants"
 import * as Haptics from "expo-haptics"
 import { Image } from "expo-image"
+import * as ImagePicker from "expo-image-picker"
 import { router } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useEffect, useState } from "react"
 import {
+  ActivityIndicator,
   Linking,
   Modal,
   Platform,
@@ -23,7 +31,23 @@ import {
   View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { Button, Card, Switch, Text } from "react-native-paper"
+import { Button, Card, Chip, SegmentedButtons, Switch, Text, TextInput } from "react-native-paper"
+
+function toYMD(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+function formatShiftRange(startsAt: string, endsAt: string) {
+  const start = new Date(startsAt)
+  const end = new Date(endsAt)
+  const dateStr = start.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const startTime = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  const endTime = end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  return `${dateStr}, ${startTime} – ${endTime}`
+}
 
 /** Change this to your real support inbox before shipping. */
 const SUPPORT_EMAIL = "support@example.com"
@@ -38,18 +62,158 @@ function triggerNavHaptic() {
 export default function Profile() {
   const { horizontal, scrollBottomPad } = useMobileLayout()
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
   const [demoNotifications, setDemoNotifications] = useState(true)
   const [aboutVisible, setAboutVisible] = useState(false)
+  const [inviteModalVisible, setInviteModalVisible] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState<Exclude<RestaurantRole, "owner">>("staff")
+  const [inviting, setInviting] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [shiftModalVisible, setShiftModalVisible] = useState(false)
+  const [shiftMemberId, setShiftMemberId] = useState<string | null>(null)
+  const [shiftLabel, setShiftLabel] = useState("")
+  const [shiftDate, setShiftDate] = useState("")
+  const [shiftStart, setShiftStart] = useState("")
+  const [shiftEnd, setShiftEnd] = useState("")
+  const [savingShift, setSavingShift] = useState(false)
+
+  const { data: members, updateOwnAvatar } = useRestaurantMembers()
+  const { data: invites, createInvite } = useRestaurantInvites()
+  const { data: shifts, insert: insertShift } = useShifts()
+  const myMember = members.find((m) => m.user_id === userId)
+  const myRole = myMember?.role
+  const canInvite = myRole === "owner" || myRole === "manager"
+  const canManageShifts = myRole === "owner" || myRole === "manager"
+  const pendingInvites = invites.filter((i) => i.status === "pending")
+  const upcomingShifts = shifts
+    .filter((s) => new Date(s.ends_at) >= new Date())
+    .slice(0, 5)
 
   useEffect(() => {
-    // Email is read once on mount; add onAuthStateChange if you need live updates after login elsewhere.
+    // Read once on mount; add onAuthStateChange if you need live updates after login elsewhere.
     supabase.auth.getUser().then(({ data }) => {
       setUserEmail(data.user?.email ?? null)
+      setUserId(data.user?.id ?? null)
     })
   }, [])
 
   const initial = userEmail?.trim()?.charAt(0)?.toUpperCase() ?? "?"
+
+  async function handleChangeAvatar() {
+    if (!userId) return
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!permission.granted) {
+      notify("Permission needed", "Allow photo library access to set a profile picture.")
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [1, 1],
+    })
+    if (result.canceled || !result.assets[0]) return
+
+    setUploadingAvatar(true)
+    try {
+      const asset = result.assets[0]
+      const response = await fetch(asset.uri)
+      const blob = await response.blob()
+      const contentType = asset.mimeType ?? "image/jpeg"
+      const path = `${userId}/avatar`
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { upsert: true, contentType })
+      if (uploadError) throw uploadError
+
+      const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(path)
+      const cacheBustedUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`
+
+      await updateOwnAvatar(userId, cacheBustedUrl)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update profile picture."
+      notify("Error", message)
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  function openInviteModal() {
+    setInviteEmail("")
+    setInviteRole("staff")
+    setInviteModalVisible(true)
+  }
+
+  async function handleSendInvite() {
+    if (!inviteEmail.trim()) {
+      notify("Missing info", "Please enter an email address.")
+      return
+    }
+    setInviting(true)
+    try {
+      const invite = await createInvite(inviteEmail.trim(), inviteRole)
+      setInviteModalVisible(false)
+      const url = getAcceptInviteUrl(invite.token)
+      const result = await shareOrCopyLink(`Join us on ${Constants.expoConfig?.name ?? "the app"}!`, url)
+      notify(
+        "Invite sent",
+        result === "copied" ? "Invite link copied — send it to your teammate." : "Share the invite link with your teammate."
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not create invite."
+      notify("Error", message)
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  function openShiftModal() {
+    setShiftMemberId(userId)
+    setShiftLabel("")
+    setShiftDate(toYMD(new Date()))
+    setShiftStart("")
+    setShiftEnd("")
+    setShiftModalVisible(true)
+  }
+
+  function closeShiftModal() {
+    setShiftModalVisible(false)
+  }
+
+  async function handleSaveShift() {
+    if (!shiftMemberId) {
+      notify("Missing info", "Choose who this shift is for.")
+      return
+    }
+    const timePattern = /^\d{2}:\d{2}$/
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate.trim()) || !timePattern.test(shiftStart) || !timePattern.test(shiftEnd)) {
+      notify("Missing info", "Enter a date (YYYY-MM-DD) and start/end times (HH:MM).")
+      return
+    }
+    const startsAt = new Date(`${shiftDate.trim()}T${shiftStart}:00`)
+    const endsAt = new Date(`${shiftDate.trim()}T${shiftEnd}:00`)
+    if (isNaN(startsAt.getTime()) || isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+      notify("Invalid times", "End time must be after start time.")
+      return
+    }
+    setSavingShift(true)
+    try {
+      await insertShift({
+        user_id: shiftMemberId,
+        label: shiftLabel.trim() || null,
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+      })
+      closeShiftModal()
+    } catch (err) {
+      notify("Error", getErrorMessage(err))
+    } finally {
+      setSavingShift(false)
+    }
+  }
 
   async function performLogout() {
     setLoggingOut(true)
@@ -109,17 +273,136 @@ export default function Profile() {
         <Card style={styles.card} mode="elevated">
           <Card.Content style={styles.cardContent}>
             <View style={styles.profileBlock}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initial}</Text>
-              </View>
+              <Pressable onPress={handleChangeAvatar} disabled={uploadingAvatar} style={styles.avatar}>
+                {uploadingAvatar ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : myMember?.avatar_url ? (
+                  <Image source={{ uri: myMember.avatar_url }} style={styles.avatarImage} contentFit="cover" />
+                ) : (
+                  <Text style={styles.avatarText}>{initial}</Text>
+                )}
+                <View style={styles.avatarEditBadge}>
+                  <Ionicons name="camera" size={12} color="#FFFFFF" />
+                </View>
+              </Pressable>
               <View style={styles.profileTextCol}>
                 <Text style={styles.profileEmail} numberOfLines={2}>
                   {userEmail ?? "Not signed in"}
                 </Text>
-                <Text style={styles.profileHint}>Restaurant staff account</Text>
+                <Text style={styles.profileHint}>
+                  {myRole ? `Restaurant ${myRole}` : "Restaurant staff account"}
+                </Text>
               </View>
             </View>
           </Card.Content>
+        </Card>
+
+        <Text style={styles.groupLabel}>Team</Text>
+        <Card style={styles.card} mode="elevated">
+          {members.map((member, index) => (
+            <View key={member.id}>
+              {index > 0 && <RowDivider />}
+              <View style={styles.teamRow}>
+                <View style={styles.teamRowLeft}>
+                  <View style={styles.teamAvatar}>
+                    {member.avatar_url ? (
+                      <Image source={{ uri: member.avatar_url }} style={styles.teamAvatarImage} contentFit="cover" />
+                    ) : (
+                      <Text style={styles.teamAvatarText}>
+                        {(member.display_name ?? "?").trim().charAt(0).toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.teamMemberName} numberOfLines={1}>
+                    {member.display_name ?? "Team member"}
+                  </Text>
+                  {member.user_id === userId && <Text style={styles.teamYouTag}> (you)</Text>}
+                </View>
+                <Text style={styles.teamRoleBadge}>{member.role}</Text>
+              </View>
+            </View>
+          ))}
+          {canInvite && (
+            <View>
+              <RowDivider />
+              <MenuRow
+                icon="person-add-outline"
+                iconColor={colors.primary}
+                label="Invite teammate"
+                onPress={openInviteModal}
+                showChevron={false}
+              />
+            </View>
+          )}
+        </Card>
+
+        {canInvite && pendingInvites.length > 0 && (
+          <Card style={styles.card} mode="elevated">
+            <Card.Content style={styles.cardContentTight}>
+              <Text style={styles.label}>Pending invites</Text>
+              {pendingInvites.map((invite) => (
+                <View key={invite.id} style={styles.pendingInviteRow}>
+                  <View style={styles.pendingInviteTextCol}>
+                    <Text style={styles.value} numberOfLines={1}>{invite.email}</Text>
+                    <Text style={styles.meta}>Invited as {invite.role}</Text>
+                  </View>
+                  <Button
+                    mode="outlined"
+                    compact
+                    onPress={() =>
+                      shareOrCopyLink(
+                        `Join us on ${Constants.expoConfig?.name ?? "the app"}!`,
+                        getAcceptInviteUrl(invite.token)
+                      ).then((result) =>
+                        notify(result === "copied" ? "Link copied" : "Shared")
+                      )
+                    }
+                  >
+                    Copy Link
+                  </Button>
+                </View>
+              ))}
+            </Card.Content>
+          </Card>
+        )}
+
+        <Text style={styles.groupLabel}>Shifts</Text>
+        <Card style={styles.card} mode="elevated">
+          {upcomingShifts.length === 0 ? (
+            <Card.Content style={styles.cardContentTight}>
+              <Text style={styles.meta}>No upcoming shifts scheduled.</Text>
+            </Card.Content>
+          ) : (
+            upcomingShifts.map((shift, index) => {
+              const member = members.find((m) => m.user_id === shift.user_id)
+              return (
+                <View key={shift.id}>
+                  {index > 0 && <RowDivider />}
+                  <View style={styles.shiftRow}>
+                    <View style={styles.pendingInviteTextCol}>
+                      <Text style={styles.value} numberOfLines={1}>
+                        {member?.display_name ?? "Team member"}
+                        {shift.label ? ` — ${shift.label}` : ""}
+                      </Text>
+                      <Text style={styles.meta}>{formatShiftRange(shift.starts_at, shift.ends_at)}</Text>
+                    </View>
+                  </View>
+                </View>
+              )
+            })
+          )}
+          {canManageShifts && (
+            <>
+              <RowDivider />
+              <MenuRow
+                icon="calendar-outline"
+                iconColor={colors.tasks}
+                label="Schedule a shift"
+                onPress={openShiftModal}
+                showChevron={false}
+              />
+            </>
+          )}
         </Card>
 
         <Text style={styles.groupLabel}>Shortcuts</Text>
@@ -304,6 +587,137 @@ export default function Profile() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={inviteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInviteModalVisible(false)}
+      >
+        <View style={styles.aboutModalOverlay}>
+          <TouchableWithoutFeedback
+            accessibilityRole="button"
+            accessibilityLabel="Close invite dialog"
+            onPress={() => setInviteModalVisible(false)}
+          >
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+          <View style={styles.aboutModalCard}>
+            <Text style={styles.aboutModalTitle}>Invite teammate</Text>
+            <TextInput
+              label="Email"
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              mode="outlined"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              style={styles.inviteInput}
+              autoFocus
+            />
+            <SegmentedButtons
+              value={inviteRole}
+              onValueChange={(value) => setInviteRole(value as Exclude<RestaurantRole, "owner">)}
+              buttons={[
+                { value: "staff", label: "Staff" },
+                { value: "manager", label: "Manager" },
+              ]}
+              style={styles.inviteRolePicker}
+            />
+            {inviting ? (
+              <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+            ) : (
+              <Button
+                mode="contained"
+                onPress={handleSendInvite}
+                style={styles.aboutModalClose}
+                labelStyle={styles.aboutModalCloseLabel}
+              >
+                Create Invite Link
+              </Button>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={shiftModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeShiftModal}
+      >
+        <View style={styles.aboutModalOverlay}>
+          <TouchableWithoutFeedback
+            accessibilityRole="button"
+            accessibilityLabel="Close schedule shift dialog"
+            onPress={closeShiftModal}
+          >
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+          <View style={styles.aboutModalCard}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.aboutModalTitle}>Schedule a shift</Text>
+              <Text style={styles.assigneeLabel}>For</Text>
+              <View style={styles.assigneeChipRow}>
+                {members.map((m) => (
+                  <Chip
+                    key={m.id}
+                    selected={shiftMemberId === m.user_id}
+                    onPress={() => setShiftMemberId(m.user_id)}
+                    style={styles.assigneeChip}
+                  >
+                    {m.display_name ?? "Member"}
+                  </Chip>
+                ))}
+              </View>
+              <TextInput
+                label="Label (optional)"
+                value={shiftLabel}
+                onChangeText={setShiftLabel}
+                mode="outlined"
+                placeholder="Kitchen Lead"
+                style={styles.inviteInput}
+              />
+              <TextInput
+                label="Date (YYYY-MM-DD)"
+                value={shiftDate}
+                onChangeText={setShiftDate}
+                mode="outlined"
+                placeholder="2026-07-15"
+                style={styles.inviteInput}
+              />
+              <TextInput
+                label="Start time (HH:MM)"
+                value={shiftStart}
+                onChangeText={setShiftStart}
+                mode="outlined"
+                placeholder="09:00"
+                style={styles.inviteInput}
+              />
+              <TextInput
+                label="End time (HH:MM)"
+                value={shiftEnd}
+                onChangeText={setShiftEnd}
+                mode="outlined"
+                placeholder="17:00"
+                style={styles.inviteInput}
+              />
+              {savingShift ? (
+                <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+              ) : (
+                <Button
+                  mode="contained"
+                  onPress={handleSaveShift}
+                  style={styles.aboutModalClose}
+                  labelStyle={styles.aboutModalCloseLabel}
+                >
+                  Save Shift
+                </Button>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -418,11 +832,30 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 16,
   },
   avatarText: {
     fontSize: 22,
     fontWeight: "800",
     color: colors.primary,
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.surface,
   },
   profileTextCol: {
     flex: 1,
@@ -437,6 +870,102 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 4,
+  },
+  teamRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  teamRowLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  teamAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    marginRight: 10,
+  },
+  teamAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  teamAvatarText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+  },
+  teamMemberName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  teamYouTag: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  teamRoleBadge: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  pendingInviteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  pendingInviteTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  inviteInput: {
+    marginBottom: 16,
+    backgroundColor: colors.surface,
+  },
+  inviteRolePicker: {
+    marginBottom: 20,
+  },
+  loader: {
+    marginVertical: 8,
+  },
+  shiftRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  assigneeLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 8,
+  },
+  assigneeChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  assigneeChip: {
+    marginBottom: 4,
   },
   menuRow: {
     flexDirection: "row",

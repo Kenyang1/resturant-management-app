@@ -5,7 +5,7 @@ import { notify } from "@/lib/alert"
 import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { colors } from "@/lib/theme"
-import { router } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useState } from "react"
 import {
@@ -22,6 +22,7 @@ import { Button, Card, Text, TextInput } from "react-native-paper"
 
 export default function SignUp() {
   const { horizontal, scrollBottomPad } = useMobileLayout()
+  const { redirect } = useLocalSearchParams<{ redirect?: string }>()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -52,7 +53,7 @@ export default function SignUp() {
       } else {
         notify("Check your email", "We sent a confirmation link to your email. Confirm it, then sign in.")
       }
-      router.replace("/login")
+      router.replace(redirect ? `/login?redirect=${redirect}` : "/login")
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Sign up failed."
       notify("Error", message)

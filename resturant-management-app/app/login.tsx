@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
 import { colors } from "@/lib/theme"
-import { router } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import { Image } from "expo-image"
 import { useState } from "react"
 import {
@@ -23,6 +23,7 @@ import { Button, Card, Text, TextInput } from "react-native-paper"
 
 export default function Login() {
   const { horizontal, scrollBottomPad } = useMobileLayout()
+  const { redirect } = useLocalSearchParams<{ redirect?: string }>()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -37,7 +38,9 @@ export default function Login() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (error) throw error
-      router.replace("/")
+      // `redirect` is a runtime string (from a query param), so it can't be checked
+      // against expo-router's statically-typed route list.
+      router.replace((redirect ? decodeURIComponent(redirect) : "/") as never)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Login failed."
       notify("Error", message)
@@ -114,7 +117,12 @@ export default function Login() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Don't have an account? </Text>
-          <Pressable onPress={() => router.push("/sign-up")} hitSlop={8}>
+          <Pressable
+            onPress={() =>
+              router.push(redirect ? `/sign-up?redirect=${redirect}` : "/sign-up")
+            }
+            hitSlop={8}
+          >
             <Text style={styles.link}>Sign Up</Text>
           </Pressable>
         </View>
