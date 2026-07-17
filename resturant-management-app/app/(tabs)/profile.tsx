@@ -113,24 +113,37 @@ export default function Profile() {
       return
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: "images",
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
+      // Native uploads go through base64 → ArrayBuffer: React Native's Blob support
+      // is incomplete and fetch(uri).blob() produces broken/empty Storage uploads.
+      base64: Platform.OS !== "web",
     })
     if (result.canceled || !result.assets[0]) return
 
     setUploadingAvatar(true)
     try {
       const asset = result.assets[0]
-      const response = await fetch(asset.uri)
-      const blob = await response.blob()
       const contentType = asset.mimeType ?? "image/jpeg"
       const path = `${userId}/avatar`
 
+      let body: Blob | ArrayBuffer
+      if (Platform.OS === "web") {
+        const response = await fetch(asset.uri)
+        body = await response.blob()
+      } else {
+        if (!asset.base64) throw new Error("Could not read the selected image.")
+        const binary = atob(asset.base64)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        body = bytes.buffer
+      }
+
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(path, blob, { upsert: true, contentType })
+        .upload(path, body, { upsert: true, contentType })
       if (uploadError) throw uploadError
 
       const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(path)
@@ -212,6 +225,14 @@ export default function Profile() {
         ends_at: endsAt.toISOString(),
       })
       closeShiftModal()
+      // Explicit confirmation: a shift whose end time has already passed won't show
+      // under "Upcoming shifts", which otherwise reads as a silent failure.
+      notify(
+        "Shift scheduled",
+        endsAt < new Date()
+          ? "Saved — note it won't appear under Upcoming shifts because it has already ended."
+          : "It's on the schedule."
+      )
     } catch (err) {
       notify("Error", getErrorMessage(err))
     } finally {
