@@ -2,6 +2,10 @@
  * Finance tab — revenue & expense entries with period totals and vs previous period.
  * Data: Supabase table `finance_entries` (see supabase-finance-entries.sql).
  */
+import { AnimatedPressable } from "@/components/AnimatedPressable"
+import { PickerField } from "@/components/PickerField"
+import { Sheet } from "@/components/Sheet"
+import { Skeleton } from "@/components/Skeleton"
 import { confirmAction, notify } from "@/lib/alert"
 import { useApprovalRequests } from "@/lib/hooks/useApprovalRequests"
 import { FinanceEntry, FinanceKind, useFinanceEntries } from "@/lib/hooks/useFinanceEntries"
@@ -12,15 +16,7 @@ import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
 import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { type ComponentProps, useEffect, useMemo, useState } from "react"
-import {
-  Keyboard,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableWithoutFeedback,
-  View,
-} from "react-native"
+import { Keyboard, ScrollView, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Button, Card, Text, TextInput } from "react-native-paper"
 
@@ -255,10 +251,6 @@ export default function FinanceScreen() {
       setSaveError("Category is required")
       return
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(formDate.trim())) {
-      setSaveError("Use date format YYYY-MM-DD")
-      return
-    }
     const payload = {
       kind: formKind,
       amount: amt,
@@ -284,8 +276,27 @@ export default function FinanceScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={["left", "right", "bottom"]}>
-        <Text style={styles.loadingText}>Loading finance...</Text>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title} numberOfLines={1}>
+                Finance
+              </Text>
+              <Text style={styles.subtitle}>Cash flow at a glance</Text>
+            </View>
+          </View>
+        </View>
+        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+          <Skeleton style={styles.netCard} />
+          <View style={styles.summaryRow}>
+            <Skeleton style={styles.summaryCard} />
+            <Skeleton style={styles.summaryCard} />
+          </View>
+          <Skeleton style={[styles.card, styles.skeletonCard]} />
+          <Skeleton style={[styles.card, styles.skeletonCard]} />
+          <Skeleton style={[styles.card, styles.skeletonCard]} />
+        </View>
       </SafeAreaView>
     )
   }
@@ -349,7 +360,11 @@ export default function FinanceScreen() {
             </View>
           </View>
           <View style={styles.netChart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <MaterialCommunityIcons name="chart-line" size={66} color="#FFFFFF" />
+            <MaterialCommunityIcons
+              name={netDeltaPct == null ? "wallet-outline" : netDeltaPct >= 0 ? "trending-up" : "trending-down"}
+              size={56}
+              color="#FFFFFF"
+            />
           </View>
         </View>
 
@@ -429,21 +444,18 @@ export default function FinanceScreen() {
             {periodOptions.map((option) => {
               const selected = period === option.value
               return (
-                <Pressable
+                <AnimatedPressable
                   key={option.value}
                   onPress={() => setPeriod(option.value)}
-                  style={({ pressed }) => [
-                    styles.periodButton,
-                    selected && styles.periodButtonSelected,
-                    pressed && styles.pressed,
-                  ]}
+                  style={[styles.periodButton, selected && styles.periodButtonSelected]}
+                  scaleTo={0.96}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                 >
                   <Text style={[styles.periodButtonText, selected && styles.periodButtonTextSelected]}>
                     {option.label}
                   </Text>
-                </Pressable>
+                </AnimatedPressable>
               )
             })}
           </View>
@@ -614,24 +626,24 @@ export default function FinanceScreen() {
                   </Text>
                   {canManageFinance && (
                     <View style={styles.transactionActions}>
-                      <Pressable
+                      <AnimatedPressable
                         onPress={() => openEditModal(item)}
-                        style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
+                        style={styles.transactionAction}
+                        scaleTo={0.9}
                         accessibilityRole="button"
                         accessibilityLabel={`Edit ${item.category} transaction`}
-                        hitSlop={4}
                       >
                         <MaterialCommunityIcons name="pencil-outline" size={17} color={colors.textSecondary} />
-                      </Pressable>
-                      <Pressable
+                      </AnimatedPressable>
+                      <AnimatedPressable
                         onPress={() => confirmDelete(item)}
-                        style={({ pressed }) => [styles.transactionAction, pressed && styles.pressed]}
+                        style={styles.transactionAction}
+                        scaleTo={0.9}
                         accessibilityRole="button"
                         accessibilityLabel={`Delete ${item.category} transaction`}
-                        hitSlop={4}
                       >
                         <MaterialCommunityIcons name="trash-can-outline" size={17} color={colors.error} />
-                      </Pressable>
+                      </AnimatedPressable>
                     </View>
                   )}
                 </View>
@@ -654,122 +666,104 @@ export default function FinanceScreen() {
         </Button>
       </View>
 
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
-        <View style={styles.modalOverlay}>
-          <View style={StyleSheet.absoluteFill}>
-            <TouchableWithoutFeedback onPress={closeModal}>
-              <View style={StyleSheet.absoluteFill} />
-            </TouchableWithoutFeedback>
-          </View>
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHandle} />
-              <View style={styles.modalHeader}>
-                <View style={styles.modalHeaderIcon}>
-                  <MaterialCommunityIcons
-                    name={editingItem ? "pencil-outline" : "cash-plus"}
-                    size={22}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.modalHeaderCopy}>
-                  <Text style={styles.modalTitle}>{editingItem ? "Edit transaction" : "Add transaction"}</Text>
-                  <Text style={styles.modalSubtitle}>Keep your daily cash flow up to date</Text>
-                </View>
-              </View>
-              {saveError ? <Text style={styles.saveErrorText}>{saveError}</Text> : null}
-
-              <Text style={styles.fieldLabel}>Transaction type</Text>
-              <View style={styles.kindRow}>
-                <Pressable
-                  onPress={() => setFormKind("revenue")}
-                  style={({ pressed }) => [
-                    styles.kindChoice,
-                    formKind === "revenue" && styles.kindChoiceActive,
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name="arrow-down-left"
-                    size={18}
-                    color={formKind === "revenue" ? "#FFFFFF" : colors.primaryDark}
-                  />
-                  <Text style={[styles.kindChoiceText, formKind === "revenue" && styles.kindChoiceTextActive]}>
-                    Revenue
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setFormKind("expense")}
-                  style={({ pressed }) => [
-                    styles.kindChoice,
-                    formKind === "expense" && styles.kindChoiceActiveExpense,
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name="arrow-up-right"
-                    size={18}
-                    color={formKind === "expense" ? "#FFFFFF" : colors.error}
-                  />
-                  <Text style={[styles.kindChoiceText, formKind === "expense" && styles.kindChoiceTextActive]}>
-                    Expense
-                  </Text>
-                </Pressable>
-              </View>
-
-              <TextInput
-                label="Amount"
-                value={formAmount}
-                onChangeText={setFormAmount}
-                mode="outlined"
-                keyboardType="decimal-pad"
-                style={styles.modalInput}
-                outlineStyle={styles.modalInputOutline}
+      <Sheet visible={modalVisible} onDismiss={closeModal}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderIcon}>
+              <MaterialCommunityIcons
+                name={editingItem ? "pencil-outline" : "cash-plus"}
+                size={22}
+                color={colors.primary}
               />
-              <TextInput
-                label="Category"
-                value={formCategory}
-                onChangeText={setFormCategory}
-                mode="outlined"
-                style={styles.modalInput}
-                outlineStyle={styles.modalInputOutline}
-                placeholder="e.g. Sales, Payroll, Utilities"
-              />
-              <TextInput
-                label="Notes (optional)"
-                value={formNotes}
-                onChangeText={setFormNotes}
-                mode="outlined"
-                style={[styles.modalInput, styles.notesInput]}
-                outlineStyle={styles.modalInputOutline}
-                multiline
-              />
-              <TextInput
-                label="Date (YYYY-MM-DD)"
-                value={formDate}
-                onChangeText={setFormDate}
-                mode="outlined"
-                style={styles.modalInput}
-                outlineStyle={styles.modalInputOutline}
-              />
-
-              <View style={styles.modalActions}>
-                <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
-                  Cancel
-                </Button>
-                <Button
-                  mode="contained"
-                  onPress={() => void handleSave()}
-                  style={[styles.modalButton, styles.modalSaveButton]}
-                  contentStyle={styles.modalButtonContent}
-                >
-                  {editingItem ? "Save changes" : "Add transaction"}
-                </Button>
-              </View>
             </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </Modal>
+            <View style={styles.modalHeaderCopy}>
+              <Text style={styles.modalTitle}>{editingItem ? "Edit transaction" : "Add transaction"}</Text>
+              <Text style={styles.modalSubtitle}>Keep your daily cash flow up to date</Text>
+            </View>
+          </View>
+          {saveError ? <Text style={styles.saveErrorText}>{saveError}</Text> : null}
+
+          <Text style={styles.fieldLabel}>Transaction type</Text>
+          <View style={styles.kindRow}>
+            <AnimatedPressable
+              onPress={() => setFormKind("revenue")}
+              style={[styles.kindChoice, formKind === "revenue" && styles.kindChoiceActive]}
+              scaleTo={0.97}
+            >
+              <MaterialCommunityIcons
+                name="arrow-down-left"
+                size={18}
+                color={formKind === "revenue" ? "#FFFFFF" : colors.primaryDark}
+              />
+              <Text style={[styles.kindChoiceText, formKind === "revenue" && styles.kindChoiceTextActive]}>
+                Revenue
+              </Text>
+            </AnimatedPressable>
+            <AnimatedPressable
+              onPress={() => setFormKind("expense")}
+              style={[styles.kindChoice, formKind === "expense" && styles.kindChoiceActiveExpense]}
+              scaleTo={0.97}
+            >
+              <MaterialCommunityIcons
+                name="arrow-up-right"
+                size={18}
+                color={formKind === "expense" ? "#FFFFFF" : colors.error}
+              />
+              <Text style={[styles.kindChoiceText, formKind === "expense" && styles.kindChoiceTextActive]}>
+                Expense
+              </Text>
+            </AnimatedPressable>
+          </View>
+
+          <TextInput
+            label="Amount"
+            value={formAmount}
+            onChangeText={setFormAmount}
+            mode="outlined"
+            keyboardType="decimal-pad"
+            style={styles.modalInput}
+            outlineStyle={styles.modalInputOutline}
+          />
+          <TextInput
+            label="Category"
+            value={formCategory}
+            onChangeText={setFormCategory}
+            mode="outlined"
+            style={styles.modalInput}
+            outlineStyle={styles.modalInputOutline}
+            placeholder="e.g. Sales, Payroll, Utilities"
+          />
+          <TextInput
+            label="Notes (optional)"
+            value={formNotes}
+            onChangeText={setFormNotes}
+            mode="outlined"
+            style={[styles.modalInput, styles.notesInput]}
+            outlineStyle={styles.modalInputOutline}
+            multiline
+          />
+          <PickerField
+            label="Date"
+            mode="date"
+            value={new Date(`${formDate}T00:00:00`)}
+            onChange={(d) => setFormDate(toYMD(d))}
+          />
+
+          <View style={styles.modalActions}>
+            <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={() => void handleSave()}
+              style={[styles.modalButton, styles.modalSaveButton]}
+              contentStyle={styles.modalButtonContent}
+            >
+              {editingItem ? "Save changes" : "Add transaction"}
+            </Button>
+          </View>
+        </ScrollView>
+      </Sheet>
     </SafeAreaView>
   )
 }
@@ -1001,10 +995,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  pressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.985 }],
-  },
   searchWrap: {
     marginBottom: 12,
   },
@@ -1105,6 +1095,10 @@ const styles = StyleSheet.create({
     boxShadow: "0 1px 4px rgba(26, 45, 34, 0.05)",
     overflow: "hidden",
   },
+  skeletonCard: {
+    minHeight: 82,
+    borderWidth: 0,
+  },
   cardContent: {
     minHeight: 82,
     paddingVertical: 10,
@@ -1158,7 +1152,7 @@ const styles = StyleSheet.create({
   },
   amountColumn: {
     minWidth: 78,
-    maxWidth: 112,
+    maxWidth: 132,
     alignSelf: "stretch",
     alignItems: "flex-end",
     justifyContent: "space-between",
@@ -1182,14 +1176,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: 2,
+    gap: 4,
   },
   transactionAction: {
-    width: 28,
-    height: 26,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: 12,
   },
   emptyState: {
     alignItems: "center",
@@ -1250,10 +1244,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
   errorText: {
     fontSize: 16,
     color: colors.error,
@@ -1267,33 +1257,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: "center",
     paddingHorizontal: 24,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(24, 32, 27, 0.38)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    width: "100%",
-    maxWidth: 410,
-    maxHeight: "90%",
-    padding: 20,
-    borderRadius: 24,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    boxShadow: "0 16px 38px rgba(20, 38, 28, 0.20)",
-  },
-  modalHandle: {
-    width: 38,
-    height: 4,
-    alignSelf: "center",
-    marginBottom: 16,
-    borderRadius: 999,
-    backgroundColor: colors.border,
   },
   modalHeader: {
     marginBottom: 18,

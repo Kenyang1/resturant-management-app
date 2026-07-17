@@ -4,15 +4,18 @@
  * Data: Supabase table `inventory_log`.
  */
 import { MaterialCommunityIcons } from "@expo/vector-icons"
+import { AnimatedPressable } from "@/components/AnimatedPressable"
+import { Sheet } from "@/components/Sheet"
+import { Skeleton } from "@/components/Skeleton"
 import { confirmAction } from "@/lib/alert"
 import { InventoryLogItem, useInventoryLog } from "@/lib/hooks/useInventoryLog"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
 import { colors } from "@/lib/theme"
 import { useMemo, useState } from "react"
-import { StyleSheet, View, ScrollView, Modal, TouchableWithoutFeedback, Keyboard } from "react-native"
+import { StyleSheet, View, ScrollView, Keyboard } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { Button, Card, SegmentedButtons, Text, TextInput } from "react-native-paper"
+import { Button, Card, Text, TextInput } from "react-native-paper"
 
 type StockStatus = "out" | "low" | "good"
 type StockFilter = "all" | "low" | "out"
@@ -29,6 +32,12 @@ const STATUS_COLOR: Record<StockStatus, string> = { out: colors.error, low: colo
 
 type InventoryIconName = keyof typeof MaterialCommunityIcons.glyphMap
 
+const FILTER_OPTIONS: { value: StockFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "low", label: "Low stock" },
+  { value: "out", label: "Out" },
+]
+
 /** A lightweight visual placeholder until inventory items have their own image field. */
 function getInventoryIcon(itemName: string): InventoryIconName {
   const name = itemName.toLowerCase()
@@ -39,6 +48,16 @@ function getInventoryIcon(itemName: string): InventoryIconName {
   }
   if (/flour|rice|grain|bread|pasta|sugar|salt/.test(name)) return "food-outline"
   return "package-variant-closed"
+}
+
+/** Category accent so icon tiles vary by item type, matching the pattern used on Finance/Logs. */
+function getInventoryAccent(itemName: string): string {
+  const name = itemName.toLowerCase()
+  if (/chicken|beef|pork|steak|meat|turkey|fish/.test(name)) return colors.errorDark
+  if (/oil|vinegar|sauce|syrup|bottle/.test(name)) return colors.finance
+  if (/tomato|apple|orange|lemon|lime|fruit|vegetable|produce/.test(name)) return colors.primary
+  if (/flour|rice|grain|bread|pasta|sugar|salt/.test(name)) return colors.management
+  return colors.settings
 }
 
 /** Client-side filter: name, location, stock count, or cost (partial match on displayed values). */
@@ -160,8 +179,15 @@ export default function InventoryLog() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={["left", "right", "bottom"]}>
-        <Text style={styles.loadingText}>Loading inventory...</Text>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={[styles.header, { paddingHorizontal: horizontal }]}>
+          <Text style={styles.title}>Inventory</Text>
+        </View>
+        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+          <Skeleton style={[styles.card, styles.skeletonCard]} />
+          <Skeleton style={[styles.card, styles.skeletonCard]} />
+          <Skeleton style={[styles.card, styles.skeletonCard]} />
+        </View>
       </SafeAreaView>
     )
   }
@@ -204,42 +230,25 @@ export default function InventoryLog() {
       </View>
 
       <View style={[styles.filterWrap, { paddingHorizontal: horizontal }]}>
-        <SegmentedButtons
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v as StockFilter)}
-          buttons={[
-            {
-              value: "all",
-              label: "All",
-              checkedColor: colors.surface,
-              uncheckedColor: colors.textSecondary,
-              showSelectedCheck: false,
-              style: [styles.filterButton, statusFilter === "all" && styles.filterButtonActive],
-              labelStyle: styles.filterButtonLabel,
-            },
-            {
-              value: "low",
-              label: "Low stock",
-              checkedColor: colors.surface,
-              uncheckedColor: colors.textSecondary,
-              showSelectedCheck: false,
-              style: [styles.filterButton, statusFilter === "low" && styles.filterButtonActive],
-              labelStyle: styles.filterButtonLabel,
-            },
-            {
-              value: "out",
-              label: "Out",
-              checkedColor: colors.surface,
-              uncheckedColor: colors.textSecondary,
-              showSelectedCheck: false,
-              style: [styles.filterButton, statusFilter === "out" && styles.filterButtonActive],
-              labelStyle: styles.filterButtonLabel,
-            },
-          ]}
-          density="small"
-          style={styles.filterGroup}
-          theme={{ colors: { secondaryContainer: colors.primary, outline: colors.border } }}
-        />
+        <View accessibilityRole="tablist" style={styles.filterRow}>
+          {FILTER_OPTIONS.map((option) => {
+            const selected = statusFilter === option.value
+            return (
+              <AnimatedPressable
+                key={option.value}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => setStatusFilter(option.value)}
+                style={[styles.filterButton, selected && styles.filterButtonActive]}
+                scaleTo={0.96}
+              >
+                <Text style={[styles.filterButtonLabel, selected && styles.filterButtonLabelActive]}>
+                  {option.label}
+                </Text>
+              </AnimatedPressable>
+            )
+          })}
+        </View>
       </View>
 
       <ScrollView
@@ -292,26 +301,33 @@ export default function InventoryLog() {
         )}
 
         {inventoryLog.length === 0 ? (
-          <View style={styles.emptyState}>
+          <AnimatedPressable style={styles.emptyState} onPress={openAddModal} scaleTo={0.99}>
+            <View style={styles.emptyIcon}>
+              <MaterialCommunityIcons name="package-variant" size={24} color={colors.primary} />
+            </View>
             <Text style={styles.emptyText}>No inventory items yet</Text>
-            <Text style={styles.emptySubtext}>Tap Add item to create one</Text>
-          </View>
+            <Text style={styles.emptySubtext}>Tap to add your first item</Text>
+          </AnimatedPressable>
         ) : filteredLog.length === 0 ? (
           <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <MaterialCommunityIcons name="magnify" size={25} color={colors.primary} />
+            </View>
             <Text style={styles.emptyText}>No matching items</Text>
             <Text style={styles.emptySubtext}>Try a different search or clear the filter</Text>
           </View>
         ) : (
           filteredLog.map((item) => {
             const status = getStockStatus(item)
+            const accent = getInventoryAccent(item.item_name)
             return (
               <Card key={item.id} style={styles.card} mode="outlined">
                 <Card.Content style={styles.cardContent}>
-                  <View style={styles.itemIconTile}>
+                  <View style={[styles.itemIconTile, { backgroundColor: `${accent}18` }]}>
                     <MaterialCommunityIcons
                       name={getInventoryIcon(item.item_name)}
                       size={34}
-                      color={colors.primary}
+                      color={accent}
                     />
                   </View>
                   <View style={styles.itemDetails}>
@@ -391,75 +407,60 @@ export default function InventoryLog() {
         </Button>
       </View>
 
-      {/* Tap dimmed area to dismiss; inner wrapper prevents the form from closing when editing fields */}
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={StyleSheet.absoluteFill}>
-            <TouchableWithoutFeedback onPress={closeModal}>
-              <View style={StyleSheet.absoluteFill} />
-            </TouchableWithoutFeedback>
+      <Sheet visible={modalVisible} onDismiss={closeModal}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <Text style={styles.modalTitle}>
+            {editingItem ? "Edit item" : "Add item"}
+          </Text>
+          {saveError && (
+            <Text style={styles.saveErrorText}>{saveError}</Text>
+          )}
+          <TextInput
+            label="Item Name"
+            value={formItemName}
+            onChangeText={setFormItemName}
+            mode="outlined"
+            style={styles.modalInput}
+            autoFocus
+          />
+          <TextInput
+            label="Stock Quantity"
+            value={formStockQuantity}
+            onChangeText={setFormStockQuantity}
+            mode="outlined"
+            keyboardType="numeric"
+            style={styles.modalInput}
+          />
+          <TextInput
+            label="Storage Location"
+            value={formStorageLocation}
+            onChangeText={setFormStorageLocation}
+            mode="outlined"
+            style={styles.modalInput}
+          />
+          <TextInput
+            label="Cost Per Unit"
+            value={formCostPerUnit}
+            onChangeText={setFormCostPerUnit}
+            mode="outlined"
+            keyboardType="decimal-pad"
+            style={styles.modalInput}
+          />
+          <View style={styles.modalActions}>
+            <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleSave}
+              style={styles.modalButton}
+              buttonColor={colors.primary}
+            >
+              Save
+            </Button>
           </View>
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>
-                {editingItem ? "Edit item" : "Add item"}
-              </Text>
-              {saveError && (
-                <Text style={styles.saveErrorText}>{saveError}</Text>
-              )}
-              <TextInput
-                label="Item Name"
-                value={formItemName}
-                onChangeText={setFormItemName}
-                mode="outlined"
-                style={styles.modalInput}
-                autoFocus
-              />
-              <TextInput
-                label="Stock Quantity"
-                value={formStockQuantity}
-                onChangeText={setFormStockQuantity}
-                mode="outlined"
-                keyboardType="numeric"
-                style={styles.modalInput}
-              />
-              <TextInput
-                label="Storage Location"
-                value={formStorageLocation}
-                onChangeText={setFormStorageLocation}
-                mode="outlined"
-                style={styles.modalInput}
-              />
-              <TextInput
-                label="Cost Per Unit"
-                value={formCostPerUnit}
-                onChangeText={setFormCostPerUnit}
-                mode="outlined"
-                keyboardType="decimal-pad"
-                style={styles.modalInput}
-              />
-              <View style={styles.modalActions}>
-                <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
-                  Cancel
-                </Button>
-                <Button
-                  mode="contained"
-                  onPress={handleSave}
-                  style={styles.modalButton}
-                  buttonColor={colors.primary}
-                >
-                  Save
-                </Button>
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </Modal>
+        </ScrollView>
+      </Sheet>
     </SafeAreaView>
   )
 }
@@ -505,12 +506,17 @@ const styles = StyleSheet.create({
   filterWrap: {
     paddingBottom: 18,
   },
-  filterGroup: {
+  filterRow: {
+    flexDirection: "row",
     gap: 10,
   },
   filterButton: {
-    minWidth: 76,
+    flex: 1,
+    minWidth: 0,
     minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
@@ -523,6 +529,11 @@ const styles = StyleSheet.create({
   filterButtonLabel: {
     fontSize: 14,
     fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  filterButtonLabelActive: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   stockSummary: {
     minHeight: 72,
@@ -700,49 +711,49 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   emptyState: {
-    paddingVertical: 48,
     alignItems: "center",
+    paddingVertical: 42,
+    paddingHorizontal: 24,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  emptyIcon: {
+    width: 50,
+    height: 50,
+    marginBottom: 12,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceWarm,
   },
   emptyText: {
-    fontSize: 18,
-    color: colors.textSecondary,
-    marginBottom: 4,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: "700",
+    color: colors.textPrimary,
   },
   emptySubtext: {
+    paddingTop: 3,
     fontSize: 14,
+    lineHeight: 20,
     color: colors.textMuted,
+    textAlign: "center",
+  },
+  skeletonCard: {
+    minHeight: 104,
+    borderWidth: 0,
   },
   centered: {
     justifyContent: "center",
     alignItems: "center",
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
   },
   errorText: {
     fontSize: 16,
     color: colors.error,
     textAlign: "center",
     paddingHorizontal: 24,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(24, 32, 27, 0.38)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 22,
-    width: "100%",
-    maxWidth: 400,
-    maxHeight: "88%",
-    boxShadow: "0 14px 36px rgba(20, 38, 28, 0.18)",
   },
   modalTitle: {
     fontSize: 24,

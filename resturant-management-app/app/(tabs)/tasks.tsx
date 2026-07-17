@@ -3,10 +3,13 @@
  * progress bar, assignee + due time per task.
  * Data: Supabase table tasks, joined client-side against restaurant_members for names.
  */
+import { AnimatedPressable } from "@/components/AnimatedPressable"
 import { MisoChatModal } from "@/components/miso-chat-modal"
+import { PickerField } from "@/components/PickerField"
+import { Sheet } from "@/components/Sheet"
+import { Skeleton } from "@/components/Skeleton"
 import { confirmAction, notify } from "@/lib/alert"
 import { ChecklistTemplate, useChecklistTemplates } from "@/lib/hooks/useChecklistTemplates"
-import { useManagementLog } from "@/lib/hooks/useManagementLog"
 import { useRestaurantMembers } from "@/lib/hooks/useRestaurantMembers"
 import { useShiftHandoffs } from "@/lib/hooks/useShiftHandoffs"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
@@ -17,15 +20,7 @@ import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
 import { Image } from "expo-image"
 import { useEffect, useMemo, useState } from "react"
-import {
-  Keyboard,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableWithoutFeedback,
-  View,
-} from "react-native"
+import { Keyboard, ScrollView, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Button, Checkbox, Chip, Icon, ProgressBar, Text, TextInput } from "react-native-paper"
 
@@ -61,6 +56,29 @@ function formatNoteTime(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   })
+}
+
+/** "YYYY-MM-DD HH:MM" (the format `due_at` is edited in) <-> Date, for the picker fields. */
+function parseFormDue(formDue: string): Date {
+  if (!formDue.trim()) return roundToNextHour(new Date())
+  const parsed = new Date(formDue.trim().replace(" ", "T"))
+  return isNaN(parsed.getTime()) ? roundToNextHour(new Date()) : parsed
+}
+
+function formatFormDue(d: Date): string {
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  const h = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${y}-${mo}-${day} ${h}:${mi}`
+}
+
+function roundToNextHour(d: Date): Date {
+  const next = new Date(d)
+  next.setMinutes(0, 0, 0)
+  next.setHours(next.getHours() + 1)
+  return next
 }
 
 function getInitials(name: string) {
@@ -112,7 +130,6 @@ export default function TasksScreen() {
   const { data: members } = useRestaurantMembers()
   const { data: templates, startChecklist } = useChecklistTemplates()
   const { data: handoffs, insert: insertHandoff, update: updateHandoff } = useShiftHandoffs()
-  const { data: managementLog } = useManagementLog()
   const [userId, setUserId] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterTab>("mine")
   const [modalVisible, setModalVisible] = useState(false)
@@ -225,19 +242,7 @@ export default function TasksScreen() {
 
   async function handleSave() {
     if (!formTitle.trim()) return
-    let dueIso: string | null = null
-    if (formDue.trim()) {
-      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(formDue.trim())) {
-        setSaveError("Use format YYYY-MM-DD HH:MM, or leave blank")
-        return
-      }
-      const parsed = new Date(formDue.trim().replace(" ", "T"))
-      if (isNaN(parsed.getTime())) {
-        setSaveError("That due date/time isn't valid")
-        return
-      }
-      dueIso = parsed.toISOString()
-    }
+    const dueIso = formDue.trim() ? parseFormDue(formDue).toISOString() : null
     try {
       setSaveError(null)
       await insert({
@@ -254,8 +259,21 @@ export default function TasksScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={["left", "right", "bottom"]}>
-        <Text style={styles.loadingText}>Loading tasks...</Text>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title} numberOfLines={1}>
+                Shift tasks
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+          <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+          <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+          <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+        </View>
       </SafeAreaView>
     )
   }
@@ -305,21 +323,18 @@ export default function TasksScreen() {
           {FILTER_OPTIONS.map((option) => {
             const selected = filter === option.value
             return (
-              <Pressable
+              <AnimatedPressable
                 key={option.value}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 onPress={() => setFilter(option.value)}
-                style={({ pressed }) => [
-                  styles.filterButton,
-                  selected && styles.filterButtonSelected,
-                  pressed && styles.filterButtonPressed,
-                ]}
+                style={[styles.filterButton, selected && styles.filterButtonSelected]}
+                scaleTo={0.96}
               >
                 <Text style={[styles.filterButtonText, selected && styles.filterButtonTextSelected]}>
                   {option.label}
                 </Text>
-              </Pressable>
+              </AnimatedPressable>
             )
           })}
         </View>
@@ -376,11 +391,12 @@ export default function TasksScreen() {
                     />
                   </View>
 
-                  <Pressable
+                  <AnimatedPressable
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: completed }}
                     onPress={() => toggleComplete(task)}
-                    style={({ pressed }) => [styles.taskTextCol, pressed && styles.taskBodyPressed]}
+                    style={styles.taskTextCol}
+                    scaleTo={0.99}
                   >
                     <Text
                       style={[styles.taskTitle, completed && styles.taskTitleDone]}
@@ -408,20 +424,18 @@ export default function TasksScreen() {
                         </View>
                       )}
                     </View>
-                  </Pressable>
+                  </AnimatedPressable>
 
-                  <Pressable
+                  <AnimatedPressable
                     accessibilityRole="button"
                     accessibilityLabel={"Delete " + task.title}
                     onPress={() => confirmDelete(task)}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.taskDeleteButton,
-                      pressed && styles.taskDeleteButtonPressed,
-                    ]}
+                    hitSlop={3}
+                    style={styles.taskDeleteButton}
+                    scaleTo={0.9}
                   >
                     <Icon source="trash-can-outline" size={19} color={colors.textMuted} />
-                  </Pressable>
+                  </AnimatedPressable>
                 </View>
               </View>
             )
@@ -429,11 +443,12 @@ export default function TasksScreen() {
         )}
 
         {filter === "completed" && (
-          <Pressable
+          <AnimatedPressable
             accessibilityRole="button"
             accessibilityLabel="Ask Miso for help with a shift note"
             onPress={() => setChatVisible(true)}
-            style={({ pressed }) => [styles.misoBanner, pressed && styles.misoBannerPressed]}
+            style={styles.misoBanner}
+            scaleTo={0.98}
           >
             <View style={styles.misoImageWrap}>
               <Image
@@ -451,7 +466,7 @@ export default function TasksScreen() {
               </View>
             </View>
             <Icon source="chevron-right" size={22} color={colors.tasks} />
-          </Pressable>
+          </AnimatedPressable>
         )}
 
         {templates.length > 0 && (
@@ -539,11 +554,9 @@ export default function TasksScreen() {
                 key={handoff.id}
                 style={[styles.handoffCard, handoff.resolved && styles.handoffCardResolved]}
               >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.handoffRow,
-                    pressed && styles.taskBodyPressed,
-                  ]}
+                <AnimatedPressable
+                  style={styles.handoffRow}
+                  scaleTo={0.99}
                   onPress={() => toggleHandoffResolved(handoff.id, handoff.resolved)}
                 >
                   <Checkbox
@@ -572,99 +585,124 @@ export default function TasksScreen() {
                       </Text>
                     </View>
                   </View>
-                </Pressable>
+                </AnimatedPressable>
               </View>
             )
           })}
         </View>
       </ScrollView>
 
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
-        <View style={styles.modalOverlay}>
-          <View style={StyleSheet.absoluteFill}>
-            <TouchableWithoutFeedback onPress={closeModal}>
-              <View style={StyleSheet.absoluteFill} />
-            </TouchableWithoutFeedback>
-          </View>
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>New task</Text>
-                <Text style={styles.modalSubtitle}>Add a task for this shift and assign it to the team.</Text>
-                {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
-                <TextInput
-                  label="Title"
-                  value={formTitle}
-                  onChangeText={setFormTitle}
-                  mode="outlined"
-                  style={styles.modalInput}
-                  outlineStyle={styles.inputOutline}
-                  autoFocus
-                />
-                <TextInput
-                  label="Description (optional)"
-                  value={formDescription}
-                  onChangeText={setFormDescription}
-                  mode="outlined"
-                  multiline
-                  numberOfLines={2}
-                  style={styles.modalInput}
-                  outlineStyle={styles.inputOutline}
-                />
-                <TextInput
-                  label="Due (YYYY-MM-DD HH:MM, optional)"
-                  value={formDue}
-                  onChangeText={setFormDue}
-                  mode="outlined"
-                  placeholder="2026-07-15 14:00"
-                  style={styles.modalInput}
-                  outlineStyle={styles.inputOutline}
-                />
-                <Text style={styles.assigneeLabel}>Assign to</Text>
-                <View style={styles.assigneeChipRow}>
-                  <Chip
-                    selected={formAssignee === null}
-                    onPress={() => setFormAssignee(null)}
-                    style={styles.assigneeChip}
-                    showSelectedCheck
-                  >
-                    Unassigned
-                  </Chip>
-                  {members.map((member) => (
-                    <Chip
-                      key={member.id}
-                      selected={formAssignee === member.user_id}
-                      onPress={() => setFormAssignee(member.user_id)}
-                      style={styles.assigneeChip}
-                      showSelectedCheck
-                    >
-                      {member.display_name ?? "Member"}
-                    </Chip>
-                  ))}
+      <Sheet visible={modalVisible} onDismiss={closeModal}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <Text style={styles.modalTitle}>New task</Text>
+          <Text style={styles.modalSubtitle}>Add a task for this shift and assign it to the team.</Text>
+          {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
+          <TextInput
+            label="Title"
+            value={formTitle}
+            onChangeText={setFormTitle}
+            mode="outlined"
+            style={styles.modalInput}
+            outlineStyle={styles.inputOutline}
+            autoFocus
+          />
+          <TextInput
+            label="Description (optional)"
+            value={formDescription}
+            onChangeText={setFormDescription}
+            mode="outlined"
+            multiline
+            numberOfLines={2}
+            style={styles.modalInput}
+            outlineStyle={styles.inputOutline}
+          />
+          {formDue.trim() ? (
+            <View style={styles.dueRow}>
+              <View style={styles.dueFields}>
+                <View style={styles.dueFieldFlex}>
+                  <PickerField
+                    label="Due date"
+                    mode="date"
+                    value={parseFormDue(formDue)}
+                    onChange={(d) => {
+                      const next = new Date(parseFormDue(formDue))
+                      next.setFullYear(d.getFullYear(), d.getMonth(), d.getDate())
+                      setFormDue(formatFormDue(next))
+                    }}
+                  />
                 </View>
-                <View style={styles.modalActions}>
-                  <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
-                    Cancel
-                  </Button>
-                  <Button
-                    mode="contained"
-                    onPress={handleSave}
-                    style={[styles.modalButton, styles.modalSaveButton]}
-                  >
-                    Save task
-                  </Button>
+                <View style={styles.dueFieldFlex}>
+                  <PickerField
+                    label="Due time"
+                    mode="time"
+                    value={parseFormDue(formDue)}
+                    onChange={(d) => {
+                      const next = new Date(parseFormDue(formDue))
+                      next.setHours(d.getHours(), d.getMinutes(), 0, 0)
+                      setFormDue(formatFormDue(next))
+                    }}
+                  />
                 </View>
-              </ScrollView>
+              </View>
+              <AnimatedPressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove due date"
+                onPress={() => setFormDue("")}
+                style={styles.dueClearButton}
+                scaleTo={0.9}
+              >
+                <Icon source="close-circle" size={20} color={colors.textMuted} />
+              </AnimatedPressable>
             </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </Modal>
+          ) : (
+            <AnimatedPressable
+              accessibilityRole="button"
+              onPress={() => setFormDue(formatFormDue(roundToNextHour(new Date())))}
+              style={styles.addDueButton}
+              scaleTo={0.97}
+            >
+              <Icon source="calendar-outline" size={18} color={colors.tasks} />
+              <Text style={styles.addDueText}>Add due date</Text>
+            </AnimatedPressable>
+          )}
+          <Text style={styles.assigneeLabel}>Assign to</Text>
+          <View style={styles.assigneeChipRow}>
+            <Chip
+              selected={formAssignee === null}
+              onPress={() => setFormAssignee(null)}
+              style={styles.assigneeChip}
+              showSelectedCheck
+            >
+              Unassigned
+            </Chip>
+            {members.map((member) => (
+              <Chip
+                key={member.id}
+                selected={formAssignee === member.user_id}
+                onPress={() => setFormAssignee(member.user_id)}
+                style={styles.assigneeChip}
+                showSelectedCheck
+              >
+                {member.display_name ?? "Member"}
+              </Chip>
+            ))}
+          </View>
+          <View style={styles.modalActions}>
+            <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleSave}
+              style={[styles.modalButton, styles.modalSaveButton]}
+            >
+              Save task
+            </Button>
+          </View>
+        </ScrollView>
+      </Sheet>
 
-      <MisoChatModal
-        visible={chatVisible}
-        onDismiss={() => setChatVisible(false)}
-        managementLog={managementLog}
-      />
+      <MisoChatModal visible={chatVisible} onDismiss={() => setChatVisible(false)} />
     </SafeAreaView>
   )
 }
@@ -755,9 +793,6 @@ const styles = StyleSheet.create({
     borderColor: colors.tasks,
     backgroundColor: colors.tasks,
   },
-  filterButtonPressed: {
-    opacity: 0.82,
-  },
   filterButtonText: {
     fontSize: 15,
     fontWeight: "600",
@@ -823,6 +858,10 @@ const styles = StyleSheet.create({
   taskCardCompleted: {
     backgroundColor: colors.surface,
   },
+  skeletonTaskCard: {
+    height: 118,
+    borderWidth: 0,
+  },
   taskRow: {
     minHeight: 118,
     flexDirection: "row",
@@ -841,9 +880,6 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
     paddingHorizontal: 5,
     gap: 16,
-  },
-  taskBodyPressed: {
-    opacity: 0.72,
   },
   taskTitle: {
     fontSize: 17,
@@ -910,14 +946,11 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   taskDeleteButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-  },
-  taskDeleteButtonPressed: {
-    backgroundColor: colors.background,
   },
   emptyState: {
     alignItems: "center",
@@ -964,9 +997,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.statStockBorder,
     overflow: "hidden",
-  },
-  misoBannerPressed: {
-    opacity: 0.84,
   },
   misoImageWrap: {
     width: 74,
@@ -1162,34 +1192,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
   errorText: {
     fontSize: 16,
     color: colors.error,
     textAlign: "center",
     paddingHorizontal: 24,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(18, 27, 22, 0.48)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalContent: {
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "88%",
-    padding: 20,
-    borderRadius: 22,
-    borderCurve: "continuous",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    boxShadow: "0 14px 40px rgba(18, 27, 22, 0.2)",
   },
   modalTitle: {
     fontSize: 22,
@@ -1216,6 +1223,45 @@ const styles = StyleSheet.create({
   modalInput: {
     marginBottom: 16,
     backgroundColor: colors.surface,
+  },
+  dueRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    marginBottom: 4,
+  },
+  dueFields: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    gap: 8,
+  },
+  dueFieldFlex: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dueClearButton: {
+    width: 44,
+    height: 50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addDueButton: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginBottom: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  addDueText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.tasksDark,
   },
   assigneeLabel: {
     marginBottom: 9,

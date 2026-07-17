@@ -1,6 +1,9 @@
 /**
  * Profile / Settings tab — Supabase user info, navigation shortcuts, demo toggles, support, logout.
  */
+import { AnimatedPressable } from "@/components/AnimatedPressable"
+import { PickerField } from "@/components/PickerField"
+import { Sheet } from "@/components/Sheet"
 import { confirmAction, notify } from "@/lib/alert"
 import { getAcceptInviteUrl } from "@/lib/authRedirect"
 import { useActivityLog } from "@/lib/hooks/useActivityLog"
@@ -23,12 +26,9 @@ import { useEffect, useState } from "react"
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
-  TouchableWithoutFeedback,
   View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -39,6 +39,20 @@ function toYMD(d: Date) {
   const m = String(d.getMonth() + 1).padStart(2, "0")
   const day = String(d.getDate()).padStart(2, "0")
   return `${y}-${m}-${day}`
+}
+
+/** "HH:MM" <-> Date, for the shift start/end picker fields (only the time-of-day is used). */
+function parseTimeString(hm: string): Date {
+  const [h, m] = hm.split(":").map(Number)
+  const d = new Date()
+  d.setHours(isNaN(h) ? 9 : h, isNaN(m) ? 0 : m, 0, 0)
+  return d
+}
+
+function formatTimeString(d: Date): string {
+  const h = String(d.getHours()).padStart(2, "0")
+  const m = String(d.getMinutes()).padStart(2, "0")
+  return `${h}:${m}`
 }
 
 function formatShiftRange(startsAt: string, endsAt: string) {
@@ -191,8 +205,8 @@ export default function Profile() {
     setShiftMemberId(userId)
     setShiftLabel("")
     setShiftDate(toYMD(new Date()))
-    setShiftStart("")
-    setShiftEnd("")
+    setShiftStart("09:00")
+    setShiftEnd("17:00")
     setShiftModalVisible(true)
   }
 
@@ -203,11 +217,6 @@ export default function Profile() {
   async function handleSaveShift() {
     if (!shiftMemberId) {
       notify("Missing info", "Choose who this shift is for.")
-      return
-    }
-    const timePattern = /^\d{2}:\d{2}$/
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate.trim()) || !timePattern.test(shiftStart) || !timePattern.test(shiftEnd)) {
-      notify("Missing info", "Enter a date (YYYY-MM-DD) and start/end times (HH:MM).")
       return
     }
     const startsAt = new Date(`${shiftDate.trim()}T${shiftStart}:00`)
@@ -293,15 +302,12 @@ export default function Profile() {
         </View>
 
         <View style={styles.profileHero}>
-          <Pressable
+          <AnimatedPressable
             accessibilityRole="button"
             accessibilityLabel="Change profile photo"
             onPress={handleChangeAvatar}
             disabled={uploadingAvatar}
-            style={({ pressed }) => [
-              styles.avatar,
-              pressed && styles.avatarPressed,
-            ]}
+            style={styles.avatar}
           >
             {uploadingAvatar ? (
               <ActivityIndicator size="small" color={colors.primary} />
@@ -318,7 +324,7 @@ export default function Profile() {
             <View style={styles.avatarEditBadge}>
               <Ionicons name="camera" size={17} color="#FFFFFF" />
             </View>
-          </Pressable>
+          </AnimatedPressable>
           <View style={styles.profileTextCol}>
             <Text style={styles.profileName} numberOfLines={1}>
               {myMember?.display_name?.trim() || "Restaurant teammate"}
@@ -657,16 +663,13 @@ export default function Profile() {
           </Card.Content>
         </Card>
 
-        <Pressable
+        <AnimatedPressable
           accessibilityRole="button"
           accessibilityLabel="Log out"
           accessibilityState={{ disabled: loggingOut, busy: loggingOut }}
           onPress={handleLogout}
           disabled={loggingOut}
-          style={({ pressed }) => [
-            styles.logoutButton,
-            pressed && !loggingOut && styles.logoutButtonPressed,
-          ]}
+          style={styles.logoutButton}
         >
           {loggingOut ? (
             <ActivityIndicator size="small" color={colors.error} />
@@ -674,266 +677,198 @@ export default function Profile() {
             <Ionicons name="log-out-outline" size={18} color={colors.error} />
           )}
           <Text style={styles.logoutLabel}>{loggingOut ? "Logging out…" : "Log out"}</Text>
-        </Pressable>
+        </AnimatedPressable>
       </ScrollView>
 
-      <Modal
-        visible={aboutVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAboutVisible(false)}
-      >
-        <View style={styles.aboutModalOverlay}>
-          <TouchableWithoutFeedback
-            accessibilityRole="button"
-            accessibilityLabel="Close about dialog"
-            onPress={() => setAboutVisible(false)}
-          >
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-          <View style={styles.aboutModalCard}>
-            <View style={styles.modalHandle} />
-            <View style={styles.aboutModalImageWrap}>
-              <Image
-                source={mascotImages.about}
-                style={styles.aboutModalImage}
-                contentFit="contain"
-                accessibilityLabel="App mascot"
-              />
-            </View>
-            <Text style={styles.aboutModalTitle}>About us</Text>
-            <ScrollView
-              style={styles.aboutModalScroll}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              <Text style={styles.aboutModalBody}>
-                {appName} is a friendly tool for restaurant teams to stay on top of day-to-day
-                operations. Track inventory levels and costs, log management notes (maintenance,
-                compliance, incidents), and see a quick snapshot of what needs attention—from low
-                stock to recent activity—all in one place.{"\n\n"}
-                Built as a mobile-first experience so managers and staff can check the kitchen
-                from the floor, the office, or on the go.
-              </Text>
-            </ScrollView>
-            <Button
-              mode="contained"
-              onPress={() => setAboutVisible(false)}
-              style={styles.aboutModalClose}
-              labelStyle={styles.aboutModalCloseLabel}
-            >
-              Close
-            </Button>
-          </View>
+      <Sheet visible={aboutVisible} onDismiss={() => setAboutVisible(false)}>
+        <View style={styles.aboutModalImageWrap}>
+          <Image
+            source={mascotImages.about}
+            style={styles.aboutModalImage}
+            contentFit="contain"
+            accessibilityLabel="App mascot"
+          />
         </View>
-      </Modal>
+        <Text style={styles.aboutModalTitle}>About us</Text>
+        <ScrollView
+          style={styles.aboutModalScroll}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <Text style={styles.aboutModalBody}>
+            {appName} is a friendly tool for restaurant teams to stay on top of day-to-day
+            operations. Track inventory levels and costs, log management notes (maintenance,
+            compliance, incidents), and see a quick snapshot of what needs attention—from low
+            stock to recent activity—all in one place.{"\n\n"}
+            Built as a mobile-first experience so managers and staff can check the kitchen
+            from the floor, the office, or on the go.
+          </Text>
+        </ScrollView>
+        <Button
+          mode="contained"
+          onPress={() => setAboutVisible(false)}
+          style={styles.aboutModalClose}
+          labelStyle={styles.aboutModalCloseLabel}
+        >
+          Close
+        </Button>
+      </Sheet>
 
-      <Modal
-        visible={inviteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setInviteModalVisible(false)}
-      >
-        <View style={styles.aboutModalOverlay}>
-          <TouchableWithoutFeedback
-            accessibilityRole="button"
-            accessibilityLabel="Close invite dialog"
-            onPress={() => setInviteModalVisible(false)}
+      <Sheet visible={inviteModalVisible} onDismiss={() => setInviteModalVisible(false)}>
+        <View style={styles.modalIcon}>
+          <Ionicons name="person-add-outline" size={25} color={colors.primary} />
+        </View>
+        <Text style={styles.aboutModalTitle}>Invite teammate</Text>
+        <Text style={styles.modalSubtitle}>Choose their role, then share the secure invite link.</Text>
+        <TextInput
+          label="Email"
+          value={inviteEmail}
+          onChangeText={setInviteEmail}
+          mode="outlined"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          style={styles.inviteInput}
+          autoFocus
+        />
+        <SegmentedButtons
+          value={inviteRole}
+          onValueChange={(value) => setInviteRole(value as Exclude<RestaurantRole, "owner">)}
+          buttons={[
+            { value: "staff", label: "Staff" },
+            { value: "manager", label: "Manager" },
+          ]}
+          style={styles.inviteRolePicker}
+        />
+        {inviting ? (
+          <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+        ) : (
+          <Button
+            mode="contained"
+            onPress={handleSendInvite}
+            style={styles.aboutModalClose}
+            labelStyle={styles.aboutModalCloseLabel}
           >
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-          <View style={styles.aboutModalCard}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalIcon}>
-              <Ionicons name="person-add-outline" size={25} color={colors.primary} />
-            </View>
-            <Text style={styles.aboutModalTitle}>Invite teammate</Text>
-            <Text style={styles.modalSubtitle}>Choose their role, then share the secure invite link.</Text>
-            <TextInput
-              label="Email"
-              value={inviteEmail}
-              onChangeText={setInviteEmail}
-              mode="outlined"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              style={styles.inviteInput}
-              autoFocus
-            />
-            <SegmentedButtons
-              value={inviteRole}
-              onValueChange={(value) => setInviteRole(value as Exclude<RestaurantRole, "owner">)}
-              buttons={[
-                { value: "staff", label: "Staff" },
-                { value: "manager", label: "Manager" },
-              ]}
-              style={styles.inviteRolePicker}
-            />
-            {inviting ? (
-              <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-            ) : (
-              <Button
-                mode="contained"
-                onPress={handleSendInvite}
-                style={styles.aboutModalClose}
-                labelStyle={styles.aboutModalCloseLabel}
+            Create Invite Link
+          </Button>
+        )}
+      </Sheet>
+
+      <Sheet visible={shiftModalVisible} onDismiss={closeShiftModal}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={styles.modalIcon}>
+            <Ionicons name="calendar-outline" size={25} color={colors.primary} />
+          </View>
+          <Text style={styles.aboutModalTitle}>Schedule a shift</Text>
+          <Text style={styles.modalSubtitle}>Add a team member to the upcoming schedule.</Text>
+          <Text style={styles.assigneeLabel}>For</Text>
+          <View style={styles.assigneeChipRow}>
+            {members.map((m) => (
+              <Chip
+                key={m.id}
+                selected={shiftMemberId === m.user_id}
+                onPress={() => setShiftMemberId(m.user_id)}
+                style={styles.assigneeChip}
               >
-                Create Invite Link
-              </Button>
-            )}
+                {m.display_name ?? "Member"}
+              </Chip>
+            ))}
           </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={shiftModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeShiftModal}
-      >
-        <View style={styles.aboutModalOverlay}>
-          <TouchableWithoutFeedback
-            accessibilityRole="button"
-            accessibilityLabel="Close schedule shift dialog"
-            onPress={closeShiftModal}
-          >
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-          <View style={styles.aboutModalCard}>
-            <View style={styles.modalHandle} />
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.modalIcon}>
-                <Ionicons name="calendar-outline" size={25} color={colors.primary} />
-              </View>
-              <Text style={styles.aboutModalTitle}>Schedule a shift</Text>
-              <Text style={styles.modalSubtitle}>Add a team member to the upcoming schedule.</Text>
-              <Text style={styles.assigneeLabel}>For</Text>
-              <View style={styles.assigneeChipRow}>
-                {members.map((m) => (
-                  <Chip
-                    key={m.id}
-                    selected={shiftMemberId === m.user_id}
-                    onPress={() => setShiftMemberId(m.user_id)}
-                    style={styles.assigneeChip}
-                  >
-                    {m.display_name ?? "Member"}
-                  </Chip>
-                ))}
-              </View>
-              <TextInput
-                label="Label (optional)"
-                value={shiftLabel}
-                onChangeText={setShiftLabel}
-                mode="outlined"
-                placeholder="Kitchen Lead"
-                style={styles.inviteInput}
+          <TextInput
+            label="Label (optional)"
+            value={shiftLabel}
+            onChangeText={setShiftLabel}
+            mode="outlined"
+            placeholder="Kitchen Lead"
+            style={styles.inviteInput}
+          />
+          <PickerField
+            label="Date"
+            mode="date"
+            value={new Date(`${shiftDate}T00:00:00`)}
+            onChange={(d) => setShiftDate(toYMD(d))}
+          />
+          <View style={styles.shiftTimeRow}>
+            <View style={styles.shiftTimeField}>
+              <PickerField
+                label="Start time"
+                mode="time"
+                value={parseTimeString(shiftStart)}
+                onChange={(d) => setShiftStart(formatTimeString(d))}
               />
-              <TextInput
-                label="Date (YYYY-MM-DD)"
-                value={shiftDate}
-                onChangeText={setShiftDate}
-                mode="outlined"
-                placeholder="2026-07-15"
-                style={styles.inviteInput}
-              />
-              <TextInput
-                label="Start time (HH:MM)"
-                value={shiftStart}
-                onChangeText={setShiftStart}
-                mode="outlined"
-                placeholder="09:00"
-                style={styles.inviteInput}
-              />
-              <TextInput
-                label="End time (HH:MM)"
-                value={shiftEnd}
-                onChangeText={setShiftEnd}
-                mode="outlined"
-                placeholder="17:00"
-                style={styles.inviteInput}
-              />
-              {savingShift ? (
-                <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-              ) : (
-                <Button
-                  mode="contained"
-                  onPress={handleSaveShift}
-                  style={styles.aboutModalClose}
-                  labelStyle={styles.aboutModalCloseLabel}
-                >
-                  Save Shift
-                </Button>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={activityVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setActivityVisible(false)}
-      >
-        <View style={styles.aboutModalOverlay}>
-          <TouchableWithoutFeedback
-            accessibilityRole="button"
-            accessibilityLabel="Close activity history dialog"
-            onPress={() => setActivityVisible(false)}
-          >
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-          <View style={styles.aboutModalCard}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalIcon}>
-              <Ionicons name="time-outline" size={25} color={colors.primary} />
             </View>
-            <Text style={styles.aboutModalTitle}>Activity history</Text>
-            <Text style={styles.modalSubtitle}>Recent changes across inventory, logs, and finance.</Text>
-            <ScrollView style={styles.activityScroll} showsVerticalScrollIndicator={false}>
-              {activity.length === 0 ? (
-                <Text style={styles.meta}>No activity recorded yet.</Text>
-              ) : (
-                activity.map((entry) => {
-                  const actor = members.find((m) => m.user_id === entry.actor_id)
-                  const verb =
-                    entry.action === "insert" ? "added" : entry.action === "update" ? "updated" : "deleted"
-                  const area =
-                    entry.table_name === "inventory_log"
-                      ? "Inventory"
-                      : entry.table_name === "management_log"
-                        ? "Logs"
-                        : "Finance"
-                  return (
-                    <View key={entry.id} style={styles.activityRow}>
-                      <Text style={styles.activityText}>
-                        <Text style={styles.activityActor}>{actor?.display_name ?? "Someone"}</Text> {verb}{" "}
-                        <Text style={styles.activityActor}>{entry.record_summary}</Text> in {area}
-                      </Text>
-                      <Text style={styles.meta}>
-                        {new Date(entry.created_at).toLocaleString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </Text>
-                    </View>
-                  )
-                })
-              )}
-            </ScrollView>
+            <View style={styles.shiftTimeField}>
+              <PickerField
+                label="End time"
+                mode="time"
+                value={parseTimeString(shiftEnd)}
+                onChange={(d) => setShiftEnd(formatTimeString(d))}
+              />
+            </View>
+          </View>
+          {savingShift ? (
+            <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+          ) : (
             <Button
               mode="contained"
-              onPress={() => setActivityVisible(false)}
+              onPress={handleSaveShift}
               style={styles.aboutModalClose}
               labelStyle={styles.aboutModalCloseLabel}
             >
-              Close
+              Save Shift
             </Button>
-          </View>
+          )}
+        </ScrollView>
+      </Sheet>
+
+      <Sheet visible={activityVisible} onDismiss={() => setActivityVisible(false)}>
+        <View style={styles.modalIcon}>
+          <Ionicons name="time-outline" size={25} color={colors.primary} />
         </View>
-      </Modal>
+        <Text style={styles.aboutModalTitle}>Activity history</Text>
+        <Text style={styles.modalSubtitle}>Recent changes across inventory, logs, and finance.</Text>
+        <ScrollView style={styles.activityScroll} showsVerticalScrollIndicator={false}>
+          {activity.length === 0 ? (
+            <Text style={styles.meta}>No activity recorded yet.</Text>
+          ) : (
+            activity.map((entry) => {
+              const actor = members.find((m) => m.user_id === entry.actor_id)
+              const verb =
+                entry.action === "insert" ? "added" : entry.action === "update" ? "updated" : "deleted"
+              const area =
+                entry.table_name === "inventory_log"
+                  ? "Inventory"
+                  : entry.table_name === "management_log"
+                    ? "Logs"
+                    : "Finance"
+              return (
+                <View key={entry.id} style={styles.activityRow}>
+                  <Text style={styles.activityText}>
+                    <Text style={styles.activityActor}>{actor?.display_name ?? "Someone"}</Text> {verb}{" "}
+                    <Text style={styles.activityActor}>{entry.record_summary}</Text> in {area}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {new Date(entry.created_at).toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </View>
+              )
+            })
+          )}
+        </ScrollView>
+        <Button
+          mode="contained"
+          onPress={() => setActivityVisible(false)}
+          style={styles.aboutModalClose}
+          labelStyle={styles.aboutModalCloseLabel}
+        >
+          Close
+        </Button>
+      </Sheet>
     </SafeAreaView>
   )
 }
@@ -962,10 +897,7 @@ function MenuRow({
   showChevron?: boolean
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.72 }]}
-    >
+    <AnimatedPressable onPress={onPress} style={styles.menuRow} scaleTo={0.99}>
       <View style={[styles.menuIconWrap, { borderColor: `${iconColor}55` }]}>
         <Ionicons name={icon} size={22} color={iconColor} />
       </View>
@@ -980,7 +912,7 @@ function MenuRow({
       ) : showChevron ? (
         <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
       ) : null}
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 
@@ -1054,10 +986,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "visible",
     boxShadow: "0 3px 10px rgba(31, 55, 40, 0.14)",
-  },
-  avatarPressed: {
-    opacity: 0.76,
-    transform: [{ scale: 0.98 }],
   },
   avatarImage: {
     width: "100%",
@@ -1312,6 +1240,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     backgroundColor: colors.surface,
   },
+  shiftTimeRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  shiftTimeField: {
+    flex: 1,
+    minWidth: 0,
+  },
   copyButton: {
     borderRadius: 999,
     borderColor: colors.statStockBorder,
@@ -1549,36 +1485,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: colors.error,
-  },
-  logoutButtonPressed: {
-    opacity: 0.65,
-  },
-  aboutModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(22, 35, 27, 0.38)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 18,
-  },
-  aboutModalCard: {
-    width: "100%",
-    maxWidth: 400,
-    maxHeight: "88%",
-    backgroundColor: colors.surface,
-    borderRadius: 26,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: colors.border,
-    elevation: 0,
-    boxShadow: "0 12px 34px rgba(22, 35, 27, 0.22)",
-  },
-  modalHandle: {
-    alignSelf: "center",
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    marginBottom: 16,
   },
   modalIcon: {
     alignSelf: "center",

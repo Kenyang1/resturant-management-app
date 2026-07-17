@@ -2,7 +2,10 @@
  * Management Log tab — CRUD for operational notes (maintenance, compliance, incidents).
  * Data: Supabase table `management_log`.
  */
+import { AnimatedPressable } from "@/components/AnimatedPressable"
 import { MisoChatModal } from "@/components/miso-chat-modal"
+import { Sheet } from "@/components/Sheet"
+import { Skeleton } from "@/components/Skeleton"
 import { confirmAction } from "@/lib/alert"
 import { ManagementLogItem, useManagementLog } from "@/lib/hooks/useManagementLog"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
@@ -12,15 +15,7 @@ import { colors } from "@/lib/theme"
 import { Ionicons } from "@expo/vector-icons"
 import { Image } from "expo-image"
 import { useMemo, useState } from "react"
-import {
-  Keyboard,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableWithoutFeedback,
-  View,
-} from "react-native"
+import { Keyboard, ScrollView, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Button, Text, TextInput } from "react-native-paper"
 
@@ -224,11 +219,18 @@ export default function ManagementLog() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={["left", "right", "bottom"]}>
-        <View style={styles.loadingIconWrap}>
-          <Ionicons name="clipboard-outline" size={30} color={colors.primary} />
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title}>Management logs</Text>
+            </View>
+          </View>
+          <Skeleton style={styles.summaryCard} />
+          <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
+          <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
+          <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
         </View>
-        <Text style={styles.loadingText}>Loading management logs...</Text>
       </SafeAreaView>
     )
   }
@@ -294,11 +296,12 @@ export default function ManagementLog() {
           }
         />
 
-        <Pressable
+        <AnimatedPressable
           accessibilityRole="button"
           accessibilityLabel="Ask Miso about management logs"
           onPress={() => setChatVisible(true)}
-          style={({ pressed }) => [styles.misoBanner, pressed && styles.pressed]}
+          style={styles.misoBanner}
+          scaleTo={0.98}
         >
           <View style={styles.misoImageWrap}>
             <Image
@@ -316,7 +319,7 @@ export default function ManagementLog() {
               <Text style={styles.misoButtonText}>Ask Miso</Text>
             </View>
           </View>
-        </Pressable>
+        </AnimatedPressable>
 
         <View style={styles.listSection}>
           <View style={styles.sectionHeader}>
@@ -337,13 +340,14 @@ export default function ManagementLog() {
               <Text style={styles.emptySubtext}>
                 Add your first operational note to start the record.
               </Text>
-              <Pressable
+              <AnimatedPressable
                 accessibilityRole="button"
                 onPress={openAddModal}
-                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+                style={styles.emptyButton}
+                scaleTo={0.95}
               >
                 <Text style={styles.emptyButtonText}>Add first log</Text>
-              </Pressable>
+              </AnimatedPressable>
             </View>
           ) : filteredLog.length === 0 ? (
             <View style={styles.emptyState}>
@@ -385,30 +389,24 @@ export default function ManagementLog() {
                       </View>
                     )}
                     <View style={styles.cardActions}>
-                      <Pressable
+                      <AnimatedPressable
                         accessibilityRole="button"
                         accessibilityLabel={`Edit ${item.title}`}
                         onPress={() => openEditModal(item)}
-                        hitSlop={6}
-                        style={({ pressed }) => [
-                          styles.cardAction,
-                          pressed && styles.actionPressed,
-                        ]}
+                        style={styles.cardAction}
+                        scaleTo={0.9}
                       >
                         <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
-                      </Pressable>
-                      <Pressable
+                      </AnimatedPressable>
+                      <AnimatedPressable
                         accessibilityRole="button"
                         accessibilityLabel={`Delete ${item.title}`}
                         onPress={() => confirmDelete(item)}
-                        hitSlop={6}
-                        style={({ pressed }) => [
-                          styles.cardAction,
-                          pressed && styles.actionPressed,
-                        ]}
+                        style={styles.cardAction}
+                        scaleTo={0.9}
                       >
                         <Ionicons name="trash-outline" size={17} color={colors.error} />
-                      </Pressable>
+                      </AnimatedPressable>
                     </View>
                   </View>
                 </View>
@@ -417,108 +415,95 @@ export default function ManagementLog() {
           )}
         </View>
 
-        <Pressable
+        <AnimatedPressable
           accessibilityRole="button"
           accessibilityLabel="Add management log"
           onPress={openAddModal}
-          style={({ pressed }) => [styles.bottomAddButton, pressed && styles.pressed]}
+          style={styles.bottomAddButton}
+          scaleTo={0.97}
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
           <Text style={styles.bottomAddButtonText}>Add log</Text>
-        </Pressable>
+        </AnimatedPressable>
       </ScrollView>
 
-      {/* Full-screen dimmed overlay; tap outside closes. Inner TouchableWithoutFeedback stops taps on the card from bubbling to the backdrop. */}
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
-        <View style={styles.modalOverlay}>
-          <View style={StyleSheet.absoluteFill}>
-            <TouchableWithoutFeedback onPress={closeModal}>
-              <View style={StyleSheet.absoluteFill} />
-            </TouchableWithoutFeedback>
-          </View>
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <View style={styles.modalHeaderIcon}>
-                  <Ionicons
-                    name={editingItem ? "create-outline" : "add"}
-                    size={22}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.modalHeaderCopy}>
-                  <Text style={styles.modalEyebrow}>MANAGEMENT LOG</Text>
-                  <Text style={styles.modalTitle}>
-                    {editingItem ? "Edit entry" : "Add entry"}
-                  </Text>
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Close"
-                  onPress={closeModal}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.modalClose, pressed && styles.actionPressed]}
-                >
-                  <Ionicons name="close" size={20} color={colors.textSecondary} />
-                </Pressable>
-              </View>
-
-              <Text style={styles.modalDescription}>
-                Capture the details your team will need for the next shift.
-              </Text>
-
-              {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
-
-              <TextInput
-                label="Title"
-                value={formTitle}
-                onChangeText={setFormTitle}
-                mode="outlined"
-                style={styles.modalInput}
-                outlineStyle={styles.modalInputOutline}
-                autoFocus
+      <Sheet visible={modalVisible} onDismiss={closeModal}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderIcon}>
+              <Ionicons
+                name={editingItem ? "create-outline" : "add"}
+                size={22}
+                color={colors.primary}
               />
-              <TextInput
-                label="Description"
-                value={formDescription}
-                onChangeText={setFormDescription}
-                mode="outlined"
-                multiline
-                numberOfLines={4}
-                style={[styles.modalInput, styles.descriptionInput]}
-                outlineStyle={styles.modalInputOutline}
-              />
-
-              <View style={styles.modalActions}>
-                <Button
-                  mode="outlined"
-                  onPress={closeModal}
-                  style={styles.cancelButton}
-                  contentStyle={styles.modalButtonContent}
-                  labelStyle={styles.cancelButtonText}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  mode="contained"
-                  onPress={handleSave}
-                  style={styles.saveButton}
-                  contentStyle={styles.modalButtonContent}
-                  labelStyle={styles.saveButtonText}
-                >
-                  {editingItem ? "Save changes" : "Add log"}
-                </Button>
-              </View>
             </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </Modal>
+            <View style={styles.modalHeaderCopy}>
+              <Text style={styles.modalEyebrow}>MANAGEMENT LOG</Text>
+              <Text style={styles.modalTitle}>
+                {editingItem ? "Edit entry" : "Add entry"}
+              </Text>
+            </View>
+            <AnimatedPressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              onPress={closeModal}
+              style={styles.modalClose}
+              scaleTo={0.9}
+            >
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
+            </AnimatedPressable>
+          </View>
 
-      <MisoChatModal
-        visible={chatVisible}
-        onDismiss={() => setChatVisible(false)}
-        managementLog={managementLog}
-      />
+          <Text style={styles.modalDescription}>
+            Capture the details your team will need for the next shift.
+          </Text>
+
+          {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
+
+          <TextInput
+            label="Title"
+            value={formTitle}
+            onChangeText={setFormTitle}
+            mode="outlined"
+            style={styles.modalInput}
+            outlineStyle={styles.modalInputOutline}
+            autoFocus
+          />
+          <TextInput
+            label="Description"
+            value={formDescription}
+            onChangeText={setFormDescription}
+            mode="outlined"
+            multiline
+            numberOfLines={4}
+            style={[styles.modalInput, styles.descriptionInput]}
+            outlineStyle={styles.modalInputOutline}
+          />
+
+          <View style={styles.modalActions}>
+            <Button
+              mode="outlined"
+              onPress={closeModal}
+              style={styles.cancelButton}
+              contentStyle={styles.modalButtonContent}
+              labelStyle={styles.cancelButtonText}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleSave}
+              style={styles.saveButton}
+              contentStyle={styles.modalButtonContent}
+              labelStyle={styles.saveButtonText}
+            >
+              {editingItem ? "Save changes" : "Add log"}
+            </Button>
+          </View>
+        </ScrollView>
+      </Sheet>
+
+      <MisoChatModal visible={chatVisible} onDismiss={() => setChatVisible(false)} />
     </SafeAreaView>
   )
 }
@@ -539,31 +524,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingIconWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceWarm,
-    marginBottom: 14,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
   errorText: {
     fontSize: 16,
     color: colors.error,
     textAlign: "center",
     paddingHorizontal: 24,
-  },
-  pressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.985 }],
-  },
-  actionPressed: {
-    opacity: 0.55,
   },
   header: {
     flexDirection: "row",
@@ -737,6 +702,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     boxShadow: "0 1px 3px rgba(31, 55, 40, 0.06)",
   },
+  skeletonLogCard: {
+    minHeight: 92,
+    borderWidth: 0,
+  },
   logIconWrap: {
     width: 46,
     height: 46,
@@ -789,14 +758,14 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: "row",
-    gap: 2,
+    gap: 4,
   },
   cardAction: {
-    width: 30,
-    height: 30,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 9,
+    borderRadius: 12,
     backgroundColor: colors.background,
   },
   emptyState: {
@@ -857,24 +826,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#FFFFFF",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(21, 31, 24, 0.48)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  modalContent: {
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "88%",
-    padding: 20,
-    borderRadius: 22,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    boxShadow: "0 18px 50px rgba(21, 31, 24, 0.22)",
   },
   modalHeader: {
     flexDirection: "row",

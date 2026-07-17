@@ -159,7 +159,6 @@ const styles = StyleSheet.create({
     height: 224,
     marginBottom: -40,
     zIndex: 2,
-    elevation: 4,
   },
   title: {
     fontSize: 28,
@@ -176,11 +175,11 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 20,
-    elevation: 4,
     backgroundColor: colors.surface,
     overflow: "hidden",
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border,
+    boxShadow: "0 6px 20px rgba(31, 55, 40, 0.10)",
   },
   cardContent: {
     padding: 24,

@@ -1,8 +1,9 @@
-import type { ManagementLogItem } from "@/lib/hooks/useManagementLog"
+import { Sheet } from "@/components/Sheet"
+import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
-import { useState } from "react"
-import { Modal, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from "react-native"
-import { Button, Text, TextInput } from "react-native-paper"
+import { useRef, useState } from "react"
+import { ScrollView, StyleSheet, View } from "react-native"
+import { ActivityIndicator, Button, Text, TextInput } from "react-native-paper"
 
 type ChatMessage = {
   id: string
@@ -13,156 +14,137 @@ type ChatMessage = {
 type MisoChatModalProps = {
   visible: boolean
   onDismiss: () => void
-  managementLog: ManagementLogItem[]
 }
 
-function getMockAssistantReply(question: string, entries: ManagementLogItem[]) {
-  const q = question.trim().toLowerCase()
-  if (!q) return "Ask me about low stock, incidents, or recent management activity."
-
-  if (q.includes("recent") || q.includes("latest")) {
-    const recent = entries.slice(0, 3)
-    if (recent.length === 0) return "No recent management entries found yet."
-    const summary = recent.map((item) => item.title).join(", ")
-    return `Recent highlights: ${summary}.`
-  }
-
-  if (q.includes("incident")) {
-    const incidentCount = entries.filter((item) =>
-      `${item.title} ${item.description}`.toLowerCase().includes("incident")
-    ).length
-    return incidentCount > 0
-      ? `I found ${incidentCount} incident-related log entries in the current list.`
-      : "I do not see incident-related entries yet in the current list."
-  }
-
-  if (q.includes("maintenance")) {
-    const maintenanceCount = entries.filter((item) =>
-      `${item.title} ${item.description}`.toLowerCase().includes("maintenance")
-    ).length
-    return `Maintenance-related entries: ${maintenanceCount}.`
-  }
-
-  return "Demo mode: Miso can summarize recent logs and simple keyword trends. Full AI data answers coming soon."
+const WELCOME: ChatMessage = {
+  id: "welcome",
+  role: "assistant",
+  text: "Hi, I'm Miso! Ask me anything about your restaurant — stock levels, recent spending, open tasks, or what's in the logs.",
 }
 
-/** Shared presentation and mock-response behavior for every Ask Miso entry point. */
-export function MisoChatModal({ visible, onDismiss, managementLog }: MisoChatModalProps) {
+/** Shared chat UI for every Ask Miso entry point. Answers come from the
+ * miso-chat Edge Function, which reads the caller's restaurant data under
+ * their own RLS and asks Claude. */
+export function MisoChatModal({ visible, onDismiss }: MisoChatModalProps) {
   const [chatInput, setChatInput] = useState("")
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      text: "Hi, I'm Miso! Ask me about recent logs, incidents, or maintenance.",
-    },
-  ])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([WELCOME])
+  const [sending, setSending] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
 
-  function handleSendChat() {
+  async function handleSendChat() {
     const prompt = chatInput.trim()
-    if (!prompt) return
+    if (!prompt || sending) return
 
-    const now = Date.now()
-    const userMessage: ChatMessage = {
-      id: `${now}-user`,
-      role: "user",
-      text: prompt,
-    }
-    const assistantMessage: ChatMessage = {
-      id: `${now}-assistant`,
-      role: "assistant",
-      text: getMockAssistantReply(prompt, managementLog),
-    }
-
-    setChatMessages((prev) => [...prev, userMessage, assistantMessage])
+    const userMessage: ChatMessage = { id: `${Date.now()}-user`, role: "user", text: prompt }
+    const history = [...chatMessages, userMessage]
+    setChatMessages(history)
     setChatInput("")
+    setSending(true)
+
+    try {
+      const { data, error } = await supabase.functions.invoke("miso-chat", {
+        body: {
+          // The welcome bubble is UI-only; the function expects real turns.
+          messages: history
+            .filter((m) => m.id !== "welcome")
+            .map((m) => ({ role: m.role, content: m.text })),
+        },
+      })
+      const reply: string | undefined = data?.reply
+      if (error || !reply) throw error ?? new Error("Empty reply")
+
+      setChatMessages((prev) => [
+        ...prev,
+        { id: `${Date.now()}-assistant`, role: "assistant", text: reply },
+      ])
+    } catch (err) {
+      console.warn("Miso chat failed:", err)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-error`,
+          role: "assistant",
+          text: "Sorry — I couldn't reach the kitchen brain just now. Please try again in a moment.",
+        },
+      ])
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <View style={styles.modalOverlay}>
-        <View style={StyleSheet.absoluteFill}>
-          <TouchableWithoutFeedback onPress={onDismiss}>
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-        </View>
-
-        <TouchableWithoutFeedback>
-          <View style={styles.chatModalContent}>
-            <View style={styles.chatHeader}>
-              <Text style={styles.chatTitle}>Ask Miso</Text>
-              <Button compact onPress={onDismiss}>
-                Close
-              </Button>
-            </View>
-            <Text style={styles.chatSubtext}>
-              Demo mode — Miso&apos;s responses are simulated for now.
-            </Text>
-
-            <ScrollView
-              style={styles.chatScroll}
-              contentContainerStyle={styles.chatScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {chatMessages.map((message) => (
-                <View
-                  key={message.id}
-                  style={[
-                    styles.chatBubble,
-                    message.role === "user" ? styles.chatBubbleUser : styles.chatBubbleAssistant,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chatBubbleText,
-                      message.role === "user"
-                        ? styles.chatBubbleTextUser
-                        : styles.chatBubbleTextAssistant,
-                    ]}
-                  >
-                    {message.text}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            <View style={styles.chatComposer}>
-              <TextInput
-                mode="outlined"
-                placeholder="Ask a question..."
-                value={chatInput}
-                onChangeText={setChatInput}
-                style={styles.chatInput}
-                outlineStyle={styles.chatInputOutline}
-              />
-              <Button mode="contained" onPress={handleSendChat} style={styles.chatSendButton}>
-                Send
-              </Button>
-            </View>
-          </View>
-        </TouchableWithoutFeedback>
+    <Sheet visible={visible} onDismiss={onDismiss}>
+      <View style={styles.chatHeader}>
+        <Text style={styles.chatTitle}>Ask Miso</Text>
+        <Button compact onPress={onDismiss}>
+          Close
+        </Button>
       </View>
-    </Modal>
+      <Text style={styles.chatSubtext}>
+        Miso can see your restaurant&apos;s inventory, finances, tasks, and logs.
+      </Text>
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.chatScroll}
+        contentContainerStyle={styles.chatScrollContent}
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {chatMessages.map((message) => (
+          <View
+            key={message.id}
+            style={[
+              styles.chatBubble,
+              message.role === "user" ? styles.chatBubbleUser : styles.chatBubbleAssistant,
+            ]}
+          >
+            <Text
+              style={[
+                styles.chatBubbleText,
+                message.role === "user"
+                  ? styles.chatBubbleTextUser
+                  : styles.chatBubbleTextAssistant,
+              ]}
+            >
+              {message.text}
+            </Text>
+          </View>
+        ))}
+        {sending && (
+          <View style={[styles.chatBubble, styles.chatBubbleAssistant, styles.thinkingBubble]}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.chatBubbleText, styles.chatBubbleTextAssistant]}>
+              Miso is thinking…
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.chatComposer}>
+        <TextInput
+          mode="outlined"
+          placeholder="Ask a question..."
+          value={chatInput}
+          onChangeText={setChatInput}
+          onSubmitEditing={handleSendChat}
+          style={styles.chatInput}
+          outlineStyle={styles.chatInputOutline}
+        />
+        <Button
+          mode="contained"
+          onPress={handleSendChat}
+          disabled={sending}
+          style={styles.chatSendButton}
+        >
+          Send
+        </Button>
+      </View>
+    </Sheet>
   )
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  chatModalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 16,
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "88%",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   chatHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -200,6 +182,11 @@ const styles = StyleSheet.create({
   chatBubbleUser: {
     backgroundColor: colors.primary,
     alignSelf: "flex-end",
+  },
+  thinkingBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   chatBubbleText: {
     fontSize: 14,

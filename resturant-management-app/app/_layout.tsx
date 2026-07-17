@@ -13,6 +13,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { PaperProvider, MD3LightTheme, configureFonts } from "react-native-paper";
 
 SplashScreen.preventAutoHideAsync();
@@ -61,17 +62,19 @@ export default function RootLayout() {
   if (!loaded && !err) return null;
 
   return (
-    <PaperProvider theme={appTheme}>
-      <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="sign-up" />
-        <Stack.Screen name="forgot-password" />
-        <Stack.Screen name="reset-password" />
-        <Stack.Screen name="accept-invite" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </PaperProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PaperProvider theme={appTheme}>
+        <StatusBar style="dark" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="sign-up" />
+          <Stack.Screen name="forgot-password" />
+          <Stack.Screen name="reset-password" />
+          <Stack.Screen name="accept-invite" />
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </PaperProvider>
+    </GestureHandlerRootView>
   );
 }

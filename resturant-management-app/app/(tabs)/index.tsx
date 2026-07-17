@@ -2,7 +2,9 @@
  * Home tab — today's shift, inventory attention, quick actions, and priority tasks.
  * All data continues to come from the existing Supabase-backed hooks.
  */
+import { AnimatedPressable } from "@/components/AnimatedPressable"
 import { MisoChatModal } from "@/components/miso-chat-modal"
+import { Skeleton } from "@/components/Skeleton"
 import { notify } from "@/lib/alert"
 import { useInventoryLog } from "@/lib/hooks/useInventoryLog"
 import { useManagementLog } from "@/lib/hooks/useManagementLog"
@@ -114,9 +116,22 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]} edges={["left", "right", "bottom"]}>
-        <Ionicons name="restaurant" size={44} color={colors.primary} style={styles.loadingIcon} />
-        <Text style={styles.loadingText}>Loading your dashboard...</Text>
+      <SafeAreaView style={styles.safeRoot} edges={["top", "left", "right"]}>
+        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+          <View style={styles.header}>
+            <Skeleton style={styles.avatarButton} />
+            <View style={styles.headerCopy}>
+              <Skeleton style={styles.skeletonLine} />
+            </View>
+          </View>
+          <Skeleton style={styles.shiftCard} />
+          <View style={styles.quickActionsRow}>
+            <Skeleton style={styles.quickActionCard} />
+            <Skeleton style={styles.quickActionCard} />
+          </View>
+          <Skeleton style={styles.taskCard} />
+          <Skeleton style={styles.taskCard} />
+        </View>
       </SafeAreaView>
     )
   }
@@ -141,11 +156,11 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Pressable
+          <AnimatedPressable
             accessibilityRole="button"
             accessibilityLabel="Open profile"
             onPress={() => router.push("/(tabs)/profile")}
-            style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}
+            style={styles.avatarButton}
           >
             {currentMember?.avatar_url ? (
               <Image
@@ -157,7 +172,7 @@ export default function HomeScreen() {
             ) : (
               <Ionicons name="person" size={24} color={colors.primary} />
             )}
-          </Pressable>
+          </AnimatedPressable>
 
           <View style={styles.headerCopy}>
             <Text style={styles.greeting} numberOfLines={1}>
@@ -209,7 +224,7 @@ export default function HomeScreen() {
           />
         </View>
 
-        <Pressable
+        <AnimatedPressable
           accessibilityRole="button"
           accessibilityLabel={
             lowStockCount > 0
@@ -217,11 +232,8 @@ export default function HomeScreen() {
               : "View inventory"
           }
           onPress={() => router.push("/(tabs)/inventory-log")}
-          style={({ pressed }) => [
-            styles.attentionBanner,
-            lowStockCount === 0 && styles.attentionBannerClear,
-            pressed && styles.pressed,
-          ]}
+          style={[styles.attentionBanner, lowStockCount === 0 && styles.attentionBannerClear]}
+          scaleTo={0.98}
         >
           <View style={[styles.attentionIcon, lowStockCount === 0 && styles.attentionIconClear]}>
             <Ionicons
@@ -236,53 +248,57 @@ export default function HomeScreen() {
               : "Inventory is fully stocked"}
           </Text>
           <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
-        </Pressable>
+        </AnimatedPressable>
 
         <View style={styles.quickActionsSection}>
           <Text style={styles.sectionTitle}>Quick actions</Text>
           <View style={styles.quickActionsRow}>
-            <Pressable
+            <AnimatedPressable
               accessibilityRole="button"
               onPress={() => router.push("/(tabs)/inventory-log")}
-              style={({ pressed }) => [styles.quickActionCard, pressed && styles.pressed]}
+              style={styles.quickActionCard}
+              scaleTo={0.97}
             >
               <View style={styles.quickActionIconWrap}>
                 <Ionicons name="cube-outline" size={27} color={colors.primary} />
               </View>
               <Text style={styles.quickActionLabel}>Stock count</Text>
-            </Pressable>
-            <Pressable
+            </AnimatedPressable>
+            <AnimatedPressable
               accessibilityRole="button"
               onPress={() => router.push("/(tabs)/management-log")}
-              style={({ pressed }) => [styles.quickActionCard, pressed && styles.pressed]}
+              style={styles.quickActionCard}
+              scaleTo={0.97}
             >
               <View style={styles.quickActionIconWrap}>
                 <Ionicons name="clipboard-outline" size={27} color={colors.primary} />
               </View>
               <Text style={styles.quickActionLabel}>Add log</Text>
-            </Pressable>
+            </AnimatedPressable>
           </View>
           <View style={styles.quickActionsRow}>
-            <Pressable
+            <AnimatedPressable
               accessibilityRole="button"
               onPress={() => router.push("/(tabs)/finance")}
-              style={({ pressed }) => [styles.quickActionCard, pressed && styles.pressed]}
+              style={styles.quickActionCard}
+              scaleTo={0.97}
             >
               <View style={styles.quickActionIconWrap}>
                 <Ionicons name="receipt-outline" size={27} color={colors.primary} />
               </View>
               <Text style={styles.quickActionLabel}>Record expense</Text>
-            </Pressable>
-            <Pressable
+            </AnimatedPressable>
+            <AnimatedPressable
               accessibilityRole="button"
               onPress={() => setChatVisible(true)}
-              style={({ pressed }) => [styles.quickActionCard, pressed && styles.pressed]}
+              style={styles.quickActionCard}
+              scaleTo={0.97}
             >
               <View style={[styles.quickActionIconWrap, styles.misoIconWrap]}>
                 <Ionicons name="chatbubble-ellipses-outline" size={27} color="#FFFFFF" />
               </View>
               <Text style={styles.quickActionLabel}>Ask Miso</Text>
-            </Pressable>
+            </AnimatedPressable>
           </View>
         </View>
 
@@ -295,16 +311,17 @@ export default function HomeScreen() {
           </View>
 
           {myPriorityTasks.length === 0 ? (
-            <Pressable
+            <AnimatedPressable
               onPress={() => router.push("/(tabs)/tasks")}
-              style={({ pressed }) => [styles.emptyTaskCard, pressed && styles.pressed]}
+              style={styles.emptyTaskCard}
+              scaleTo={0.98}
             >
               <View style={styles.emptyTaskIcon}>
                 <Ionicons name="checkmark" size={18} color={colors.primary} />
               </View>
               <Text style={styles.emptyTaskText}>No tasks assigned to you right now</Text>
               <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
-            </Pressable>
+            </AnimatedPressable>
           ) : (
             myPriorityTasks.map((task) => {
               const due = formatDue(task.due_at)
@@ -317,9 +334,10 @@ export default function HomeScreen() {
                     color={colors.primary}
                     uncheckedColor={colors.textMuted}
                   />
-                  <Pressable
+                  <AnimatedPressable
                     accessibilityRole="button"
-                    style={({ pressed }) => [styles.taskPressArea, pressed && styles.taskPressed]}
+                    style={styles.taskPressArea}
+                    scaleTo={0.98}
                     onPress={() => router.push("/(tabs)/tasks")}
                   >
                     <Text style={styles.taskTitle} numberOfLines={1}>
@@ -334,7 +352,7 @@ export default function HomeScreen() {
                     ) : (
                       <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
                     )}
-                  </Pressable>
+                  </AnimatedPressable>
                 </View>
               )
             })
@@ -375,10 +393,11 @@ export default function HomeScreen() {
             </View>
           ) : (
             managementLog.slice(0, 3).map((item) => (
-              <Pressable
+              <AnimatedPressable
                 key={item.id}
                 onPress={() => router.push("/(tabs)/management-log")}
-                style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
+                style={styles.activityCard}
+                scaleTo={0.98}
               >
                 <View style={styles.activityIcon}>
                   <Ionicons name="document-text-outline" size={20} color={colors.management} />
@@ -395,7 +414,7 @@ export default function HomeScreen() {
                   )}
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </Pressable>
+              </AnimatedPressable>
             ))
           )}
         </View>
@@ -414,10 +433,11 @@ export default function HomeScreen() {
             </View>
           ) : (
             inventoryLog.slice(0, 3).map((item) => (
-              <Pressable
+              <AnimatedPressable
                 key={item.id}
                 onPress={() => router.push("/(tabs)/inventory-log")}
-                style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
+                style={styles.activityCard}
+                scaleTo={0.98}
               >
                 <View style={[styles.activityIcon, styles.inventoryActivityIcon]}>
                   <Ionicons name="cube-outline" size={20} color={colors.inventory} />
@@ -432,17 +452,13 @@ export default function HomeScreen() {
                   <Text style={styles.activityMeta}>${item.cost_per_unit.toFixed(2)} per unit</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </Pressable>
+              </AnimatedPressable>
             ))
           )}
         </View>
       </ScrollView>
 
-      <MisoChatModal
-        visible={chatVisible}
-        onDismiss={() => setChatVisible(false)}
-        managementLog={managementLog}
-      />
+      <MisoChatModal visible={chatVisible} onDismiss={() => setChatVisible(false)} />
     </SafeAreaView>
   )
 }
@@ -467,22 +483,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingIcon: {
-    marginBottom: 14,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
   errorText: {
     fontSize: 16,
     color: colors.error,
     textAlign: "center",
     paddingHorizontal: 24,
-  },
-  pressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.985 }],
   },
   header: {
     flexDirection: "row",
@@ -507,6 +512,10 @@ const styles = StyleSheet.create({
   headerCopy: {
     flex: 1,
     minWidth: 0,
+  },
+  skeletonLine: {
+    height: 21,
+    borderRadius: 6,
   },
   greeting: {
     fontSize: 21,
@@ -708,9 +717,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     paddingLeft: 2,
-  },
-  taskPressed: {
-    opacity: 0.6,
   },
   taskTitle: {
     flex: 1,
