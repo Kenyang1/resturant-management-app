@@ -61,11 +61,16 @@ export function useSupabaseTable<Row, T extends { id: string | number }>(
 
   const insert = useCallback(
     async (payload: Record<string, unknown>) => {
-      const { error: err } = await supabase.from(table).insert(payload)
+      const { data: row, error: err } = await supabase
+        .from(table)
+        .insert(payload)
+        .select(select)
+        .single()
       if (err) throw err
       await refetch()
+      return mapRowRef.current(row as Row)
     },
-    [table, refetch]
+    [table, select, refetch]
   )
 
   const update = useCallback(

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
+import { dispatchPushEvent } from "@/lib/notifications"
+import { supabase } from "@/lib/supabase"
 
 export type ApprovalStatus = "pending" | "approved" | "rejected"
 
@@ -56,10 +57,13 @@ export function useApprovalRequests() {
 
   const submitExpenseRequest = useCallback(
     async (payload: ExpenseRequestPayload) => {
-      const { error: err } = await supabase
+      const { data: row, error: err } = await supabase
         .from("approval_requests")
         .insert({ kind: "expense", payload })
+        .select("id")
+        .single()
       if (err) throw err
+      dispatchPushEvent({ type: "approval_requested", request_id: row.id })
       await refetch()
     },
     [refetch]
@@ -72,6 +76,7 @@ export function useApprovalRequests() {
         decision,
       })
       if (err) throw err
+      dispatchPushEvent({ type: "approval_decided", request_id: requestId })
       await refetch()
     },
     [refetch]

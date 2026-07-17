@@ -11,6 +11,7 @@ import { confirmAction } from "@/lib/alert"
 import { InventoryLogItem, useInventoryLog } from "@/lib/hooks/useInventoryLog"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
+import { dispatchPushEvent } from "@/lib/notifications"
 import { colors } from "@/lib/theme"
 import { useMemo, useState } from "react"
 import { StyleSheet, View, ScrollView, Keyboard } from "react-native"
@@ -166,10 +167,19 @@ export default function InventoryLog() {
     }
     try {
       setSaveError(null)
+      let itemId: number
       if (editingItem) {
         await update(editingItem.id, payload)
+        itemId = editingItem.id
       } else {
-        await insert(payload)
+        const created = await insert(payload)
+        itemId = created.id
+      }
+      // Alert managers only when stock CROSSES below the threshold, so
+      // re-saving an already-low item doesn't ping them again.
+      const prevQty = editingItem ? editingItem.stock_quantity : Number.POSITIVE_INFINITY
+      if (stockQty < 10 && prevQty >= 10) {
+        dispatchPushEvent({ type: "low_stock", item_id: itemId })
       }
       closeModal()
     } catch (err) {

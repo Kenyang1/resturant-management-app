@@ -15,6 +15,7 @@ import { useShiftHandoffs } from "@/lib/hooks/useShiftHandoffs"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { Task, useTasks } from "@/lib/hooks/useTasks"
 import { useMobileLayout } from "@/lib/layout"
+import { dispatchPushEvent } from "@/lib/notifications"
 import { mascotImages } from "@/lib/mascotImages"
 import { supabase } from "@/lib/supabase"
 import { colors } from "@/lib/theme"
@@ -245,12 +246,15 @@ export default function TasksScreen() {
     const dueIso = formDue.trim() ? parseFormDue(formDue).toISOString() : null
     try {
       setSaveError(null)
-      await insert({
+      const created = await insert({
         title: formTitle.trim(),
         description: formDescription.trim() || null,
         assigned_to: formAssignee,
         due_at: dueIso,
       })
+      if (created.assigned_to && created.assigned_to !== userId) {
+        dispatchPushEvent({ type: "task_assigned", task_id: created.id })
+      }
       closeModal()
     } catch (err) {
       setSaveError(getErrorMessage(err))
