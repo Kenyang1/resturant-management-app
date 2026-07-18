@@ -1,11 +1,20 @@
 /**
- * Bottom tab navigator: Home, Inventory, Tasks, Finance, Management logs, Profile. Header is hidden; each tab screen sets its own UI.
+ * Bottom tab navigator: Home, Inventory, Tasks, Logs, More (5 visible destinations, matching the
+ * mockup). Finance and Profile stay fully registered/deep-linkable routes — Finance is hidden
+ * from the tab bar via `href: null` (still reachable from Home/More), and the Profile screen is
+ * relabeled "More" since that screen now hosts the More-hub content. Header is hidden; each tab
+ * screen sets its own UI. On desktop web this same route tree is instead framed by a persistent
+ * left sidebar (see DesktopSidebar) — `<Slot />` renders whichever tab route is active without
+ * imposing the bottom-tabs chrome.
  */
+import { DesktopSidebar } from "@/components/DesktopSidebar";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { usePushNotifications } from "@/lib/hooks/usePushNotifications";
+import { useIsDesktopWeb } from "@/lib/layout";
 import { colors } from "@/lib/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
-import { Platform } from "react-native";
+import { Slot, Tabs } from "expo-router";
+import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 /** Base height for icons + labels (excluding home-indicator inset). */
@@ -15,7 +24,22 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   // Tabs only mount when signed in, so this registers the device for the right user.
   usePushNotifications();
+  const isDesktop = useIsDesktopWeb();
   const bottomInset = Platform.OS === "ios" ? insets.bottom : Math.max(insets.bottom, 8);
+
+  if (isDesktop) {
+    return (
+      <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.background }}>
+        <DesktopSidebar />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <DesktopTopBar />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Slot />
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <Tabs
@@ -76,6 +100,9 @@ export default function TabLayout() {
         name="finance"
         options={{
           title: "Finance",
+          // Hidden from the visible tab bar (More hub + Home both link here) but the route
+          // stays fully registered and deep-linkable.
+          href: null,
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? "wallet" : "wallet-outline"} color={color} size={size - 1} />
           ),
@@ -93,9 +120,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: "More",
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? "person" : "person-outline"} color={color} size={size - 1} />
+            <Ionicons
+              name={focused ? "ellipsis-horizontal-circle" : "ellipsis-horizontal-circle-outline"}
+              color={color}
+              size={size - 1}
+            />
           ),
         }}
       />

@@ -4,7 +4,7 @@
  * fixed-duration timing, because a quick re-tap can interrupt the release mid-flight).
  */
 import { forwardRef } from "react"
-import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native"
+import { Platform, Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native"
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -14,6 +14,9 @@ import Animated, {
 } from "react-native-reanimated"
 
 const ReanimatedPressable = Animated.createAnimatedComponent(Pressable)
+const isWeb = Platform.OS === "web"
+// `cursor` is a react-native-web-only style extension, not in the shared RN ViewStyle type.
+const webCursorStyle = isWeb ? ({ cursor: "pointer" } as ViewStyle) : undefined
 
 type AnimatedPressableProps = Omit<PressableProps, "style"> & {
   style?: StyleProp<ViewStyle>
@@ -22,12 +25,16 @@ type AnimatedPressableProps = Omit<PressableProps, "style"> & {
 }
 
 export const AnimatedPressable = forwardRef<React.ElementRef<typeof Pressable>, AnimatedPressableProps>(
-  function AnimatedPressable({ style, scaleTo = 0.97, onPressIn, onPressOut, ...rest }, ref) {
+  function AnimatedPressable(
+    { style, scaleTo = 0.97, onPressIn, onPressOut, onHoverIn, onHoverOut, ...rest },
+    ref
+  ) {
     const depth = useSharedValue(0)
+    const hovered = useSharedValue(0)
 
     const animatedStyle = useAnimatedStyle(() => ({
       transform: [{ scale: 1 - depth.value * (1 - scaleTo) }],
-      opacity: 1 - depth.value * 0.18,
+      opacity: 1 - depth.value * 0.18 - hovered.value * 0.06,
     }))
 
     return (
@@ -41,7 +48,15 @@ export const AnimatedPressable = forwardRef<React.ElementRef<typeof Pressable>, 
           depth.value = withSpring(0, { damping: 14, stiffness: 260 })
           onPressOut?.(e)
         }}
-        style={[style, animatedStyle]}
+        onHoverIn={(e) => {
+          if (isWeb) hovered.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.quad) })
+          onHoverIn?.(e)
+        }}
+        onHoverOut={(e) => {
+          if (isWeb) hovered.value = withTiming(0, { duration: 150, easing: Easing.out(Easing.quad) })
+          onHoverOut?.(e)
+        }}
+        style={[style, webCursorStyle, animatedStyle]}
         {...rest}
       />
     )

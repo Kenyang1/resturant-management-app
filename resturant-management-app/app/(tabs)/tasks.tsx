@@ -4,9 +4,13 @@
  * Data: Supabase table tasks, joined client-side against restaurant_members for names.
  */
 import { AnimatedPressable } from "@/components/AnimatedPressable"
+import { EmptyState } from "@/components/EmptyState"
+import { FormSheet } from "@/components/FormSheet"
+import { MisoCallout } from "@/components/MisoCallout"
 import { MisoChatModal } from "@/components/miso-chat-modal"
 import { PickerField } from "@/components/PickerField"
-import { Sheet } from "@/components/Sheet"
+import { ScreenHeader } from "@/components/ScreenHeader"
+import { SegmentedControl } from "@/components/SegmentedControl"
 import { Skeleton } from "@/components/Skeleton"
 import { confirmAction, notify } from "@/lib/alert"
 import { ChecklistTemplate, useChecklistTemplates } from "@/lib/hooks/useChecklistTemplates"
@@ -18,7 +22,7 @@ import { useMobileLayout } from "@/lib/layout"
 import { dispatchPushEvent } from "@/lib/notifications"
 import { mascotImages } from "@/lib/mascotImages"
 import { supabase } from "@/lib/supabase"
-import { colors } from "@/lib/theme"
+import { colors, radii } from "@/lib/theme"
 import { Image } from "expo-image"
 import { useEffect, useMemo, useState } from "react"
 import { Keyboard, ScrollView, StyleSheet, View } from "react-native"
@@ -126,7 +130,7 @@ function MemberAvatar({
 }
 
 export default function TasksScreen() {
-  const { horizontal, scrollBottomPad } = useMobileLayout()
+  const { horizontal, scrollBottomPad, desktopFrameStyle } = useMobileLayout()
   const { data: tasks, loading, error, insert, update, remove, refetch: refetchTasks } = useTasks()
   const { data: members } = useRestaurantMembers()
   const { data: templates, startChecklist } = useChecklistTemplates()
@@ -264,19 +268,15 @@ export default function TasksScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
-          <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.title} numberOfLines={1}>
-                Shift tasks
-              </Text>
-            </View>
+        <View style={desktopFrameStyle}>
+          <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
+            <ScreenHeader title="Shift tasks" />
           </View>
-        </View>
-        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
-          <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
-          <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
-          <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+          <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+            <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+            <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+            <Skeleton style={[styles.taskCard, styles.skeletonTaskCard]} />
+          </View>
         </View>
       </SafeAreaView>
     )
@@ -295,416 +295,381 @@ export default function TasksScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
-        <View style={styles.header}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.title} numberOfLines={1}>
-              Shift tasks
-            </Text>
-            <Text style={styles.progressLabel}>
-              {completedCount} of {totalCount} complete
-            </Text>
-          </View>
-          <Button
-            mode="contained"
-            onPress={openAddModal}
-            style={styles.addButton}
-            contentStyle={styles.addButtonContent}
-            labelStyle={styles.addButtonLabel}
-            icon="plus"
-            compact
-          >
-            Add
-          </Button>
-        </View>
-
-        <View style={styles.progressRow}>
-          <ProgressBar progress={progress} color={colors.tasks} style={styles.progressBar} />
-          <Text style={styles.progressPct}>{progressPercent}%</Text>
-        </View>
-
-        <View accessibilityRole="tablist" style={styles.filterRow}>
-          {FILTER_OPTIONS.map((option) => {
-            const selected = filter === option.value
-            return (
-              <AnimatedPressable
-                key={option.value}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => setFilter(option.value)}
-                style={[styles.filterButton, selected && styles.filterButtonSelected]}
-                scaleTo={0.96}
+      <View style={desktopFrameStyle}>
+        <View style={[styles.topContent, { paddingHorizontal: horizontal }]}>
+          <ScreenHeader
+            title="Shift tasks"
+            subtitle={`${completedCount} of ${totalCount} complete`}
+            right={
+              <Button
+                mode="contained"
+                onPress={openAddModal}
+                style={styles.addButton}
+                contentStyle={styles.addButtonContent}
+                labelStyle={styles.addButtonLabel}
+                icon="plus"
+                compact
               >
-                <Text style={[styles.filterButtonText, selected && styles.filterButtonTextSelected]}>
-                  {option.label}
-                </Text>
-              </AnimatedPressable>
-            )
-          })}
-        </View>
-      </View>
+                Add
+              </Button>
+            }
+          />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.sectionHeadingRow}>
-          <Text style={styles.sectionHeading}>{taskSectionTitle}</Text>
-          <View style={styles.sectionCountPill}>
-            <Text style={styles.sectionCountText}>{visibleTasks.length}</Text>
+          <View style={styles.progressRow}>
+            <ProgressBar progress={progress} color={colors.tasks} style={styles.progressBar} />
+            <Text style={styles.progressPct}>{progressPercent}%</Text>
           </View>
+
+          <SegmentedControl
+            options={FILTER_OPTIONS}
+            value={filter}
+            onChange={setFilter}
+            activeColor={colors.tasks}
+          />
         </View>
 
-        {visibleTasks.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Icon
-                source={filter === "completed" ? "check-circle-outline" : "clipboard-check-outline"}
-                size={24}
-                color={colors.tasks}
-              />
+        <ScrollView
+          style={styles.scrollView}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.sectionHeadingRow}>
+            <Text style={styles.sectionHeading}>{taskSectionTitle}</Text>
+            <View style={styles.sectionCountPill}>
+              <Text style={styles.sectionCountText}>{visibleTasks.length}</Text>
             </View>
-            <Text style={styles.emptyText}>
-              {filter === "completed" ? "No completed tasks yet" : "No tasks here"}
-            </Text>
-            <Text style={styles.emptySubtext}>
-              {filter === "mine" ? 'Tap "Add" to create one' : "Nothing to show"}
-            </Text>
           </View>
-        ) : (
-          visibleTasks.map((task) => {
-            const assignee = memberFor(task.assigned_to)
-            const assigneeName = assignee?.display_name ?? "Unassigned"
-            const due = formatDue(task.due_at)
-            const completed = task.status === "completed"
 
-            return (
-              <View key={task.id} style={[styles.taskCard, completed && styles.taskCardCompleted]}>
-                <View style={styles.taskRow}>
-                  <View style={styles.checkboxWrap}>
-                    <Checkbox
-                      status={completed ? "checked" : "unchecked"}
+          {visibleTasks.length === 0 ? (
+            <EmptyState
+              image={filter === "completed" ? mascotImages.taskComplete : undefined}
+              icon={
+                filter === "completed" ? undefined : (
+                  <Icon source="clipboard-check-outline" size={24} color={colors.tasks} />
+                )
+              }
+              title={filter === "completed" ? "No completed tasks yet" : "No tasks here"}
+              subtitle={filter === "mine" ? 'Tap "Add" to create one' : "Nothing to show"}
+            />
+          ) : (
+            visibleTasks.map((task) => {
+              const assignee = memberFor(task.assigned_to)
+              const assigneeName = assignee?.display_name ?? "Unassigned"
+              const due = formatDue(task.due_at)
+              const completed = task.status === "completed"
+
+              return (
+                <View key={task.id} style={[styles.taskCard, completed && styles.taskCardCompleted]}>
+                  <View style={styles.taskRow}>
+                    <View style={styles.checkboxWrap}>
+                      <Checkbox
+                        status={completed ? "checked" : "unchecked"}
+                        onPress={() => toggleComplete(task)}
+                        color={colors.tasks}
+                        uncheckedColor={colors.textMuted}
+                      />
+                    </View>
+
+                    <AnimatedPressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: completed }}
                       onPress={() => toggleComplete(task)}
+                      style={styles.taskTextCol}
+                      scaleTo={0.99}
+                    >
+                      <Text
+                        style={[styles.taskTitle, completed && styles.taskTitleDone]}
+                        numberOfLines={2}
+                      >
+                        {task.title}
+                      </Text>
+                      <View style={styles.taskMetaRow}>
+                        <View style={styles.assigneeRow}>
+                          <MemberAvatar
+                            name={assigneeName}
+                            avatarUrl={assignee?.avatar_url}
+                            size={32}
+                          />
+                          <Text style={styles.taskMeta} numberOfLines={1}>
+                            {assigneeName}
+                          </Text>
+                        </View>
+                        {due && (
+                          <View style={styles.duePill}>
+                            <Icon source="calendar-blank-outline" size={15} color={colors.management} />
+                            <Text style={styles.taskDue} numberOfLines={1}>
+                              {due}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </AnimatedPressable>
+
+                    <AnimatedPressable
+                      accessibilityRole="button"
+                      accessibilityLabel={"Delete " + task.title}
+                      onPress={() => confirmDelete(task)}
+                      hitSlop={3}
+                      style={styles.taskDeleteButton}
+                      scaleTo={0.9}
+                    >
+                      <Icon source="trash-can-outline" size={19} color={colors.textMuted} />
+                    </AnimatedPressable>
+                  </View>
+                </View>
+              )
+            })
+          )}
+
+          {filter === "completed" && (
+            <MisoCallout
+              image={mascotImages.logNote}
+              title="Need help writing a shift note?"
+              actionLabel="Ask Miso"
+              actionIcon="help-circle"
+              onPress={() => setChatVisible(true)}
+              tone="warm"
+            />
+          )}
+
+          {templates.length > 0 && (
+            <View style={styles.checklistsSection}>
+              <View style={styles.sectionHeadingRow}>
+                <Text style={styles.sectionHeading}>Checklists</Text>
+                <Text style={styles.sectionHint}>Start a routine</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.checklistsRow}
+              >
+                {templates.map((template) => (
+                  <View key={template.id} style={styles.checklistCard}>
+                    <View style={styles.checklistCardTop}>
+                      <View style={styles.checklistIcon}>
+                        <Icon source="clipboard-check-outline" size={19} color={colors.tasks} />
+                      </View>
+                      <Text style={styles.checklistCategory}>
+                        {CATEGORY_LABEL[template.category] ?? "Checklist"}
+                      </Text>
+                    </View>
+                    <Text style={styles.checklistName} numberOfLines={2}>
+                      {template.name}
+                    </Text>
+                    <View style={styles.checklistFooter}>
+                      <Text style={styles.checklistCount}>
+                        {template.checklist_template_items.length} items
+                      </Text>
+                      <Button
+                        mode="contained"
+                        compact
+                        loading={startingTemplateId === template.id}
+                        disabled={startingTemplateId !== null}
+                        onPress={() => handleStartChecklist(template)}
+                        style={styles.checklistStartButton}
+                        contentStyle={styles.checklistStartContent}
+                        labelStyle={styles.checklistStartLabel}
+                      >
+                        Start
+                      </Button>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          <View style={styles.handoffSection}>
+            <View style={styles.sectionHeadingRow}>
+              <Text style={styles.sectionHeading}>Shift handoff notes</Text>
+              <Text style={styles.sectionHint}>For the next crew</Text>
+            </View>
+
+            <View style={styles.handoffComposerCard}>
+              <TextInput
+                mode="outlined"
+                placeholder="Leave a note for the next shift..."
+                value={handoffNote}
+                onChangeText={setHandoffNote}
+                style={styles.handoffInput}
+                outlineStyle={styles.inputOutline}
+                multiline
+              />
+              <Button
+                mode="contained"
+                onPress={handlePostHandoff}
+                loading={postingHandoff}
+                disabled={postingHandoff || !handoffNote.trim()}
+                compact
+                style={styles.handoffPostButton}
+                labelStyle={styles.handoffPostLabel}
+              >
+                Post note
+              </Button>
+            </View>
+
+            {handoffs.slice(0, 5).map((handoff) => {
+              const author = memberFor(handoff.author_id)
+              const authorName = author?.display_name ?? "Team member"
+
+              return (
+                <View
+                  key={handoff.id}
+                  style={[styles.handoffCard, handoff.resolved && styles.handoffCardResolved]}
+                >
+                  <AnimatedPressable
+                    style={styles.handoffRow}
+                    scaleTo={0.99}
+                    onPress={() => toggleHandoffResolved(handoff.id, handoff.resolved)}
+                  >
+                    <Checkbox
+                      status={handoff.resolved ? "checked" : "unchecked"}
+                      onPress={() => toggleHandoffResolved(handoff.id, handoff.resolved)}
                       color={colors.tasks}
                       uncheckedColor={colors.textMuted}
                     />
-                  </View>
-
-                  <AnimatedPressable
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: completed }}
-                    onPress={() => toggleComplete(task)}
-                    style={styles.taskTextCol}
-                    scaleTo={0.99}
-                  >
-                    <Text
-                      style={[styles.taskTitle, completed && styles.taskTitleDone]}
-                      numberOfLines={2}
-                    >
-                      {task.title}
-                    </Text>
-                    <View style={styles.taskMetaRow}>
-                      <View style={styles.assigneeRow}>
+                    <View style={styles.handoffTextCol}>
+                      <Text
+                        style={[
+                          styles.handoffNoteText,
+                          handoff.resolved && styles.taskTitleDone,
+                        ]}
+                      >
+                        {handoff.note}
+                      </Text>
+                      <View style={styles.handoffMetaRow}>
                         <MemberAvatar
-                          name={assigneeName}
-                          avatarUrl={assignee?.avatar_url}
-                          size={32}
+                          name={authorName}
+                          avatarUrl={author?.avatar_url}
+                          size={26}
                         />
-                        <Text style={styles.taskMeta} numberOfLines={1}>
-                          {assigneeName}
+                        <Text style={styles.handoffMeta} numberOfLines={1}>
+                          {authorName} · {formatNoteTime(handoff.created_at)}
                         </Text>
                       </View>
-                      {due && (
-                        <View style={styles.duePill}>
-                          <Icon source="calendar-blank-outline" size={15} color={colors.management} />
-                          <Text style={styles.taskDue} numberOfLines={1}>
-                            {due}
-                          </Text>
-                        </View>
-                      )}
                     </View>
                   </AnimatedPressable>
-
-                  <AnimatedPressable
-                    accessibilityRole="button"
-                    accessibilityLabel={"Delete " + task.title}
-                    onPress={() => confirmDelete(task)}
-                    hitSlop={3}
-                    style={styles.taskDeleteButton}
-                    scaleTo={0.9}
-                  >
-                    <Icon source="trash-can-outline" size={19} color={colors.textMuted} />
-                  </AnimatedPressable>
                 </View>
-              </View>
-            )
-          })
-        )}
-
-        {filter === "completed" && (
-          <AnimatedPressable
-            accessibilityRole="button"
-            accessibilityLabel="Ask Miso for help with a shift note"
-            onPress={() => setChatVisible(true)}
-            style={styles.misoBanner}
-            scaleTo={0.98}
-          >
-            <View style={styles.misoImageWrap}>
-              <Image
-                source={mascotImages.chat}
-                style={styles.misoImage}
-                contentFit="cover"
-                accessibilityLabel="Miso, the chef cat assistant"
-              />
-            </View>
-            <View style={styles.misoCopy}>
-              <Text style={styles.misoPrompt}>Need help writing a shift note?</Text>
-              <View style={styles.misoAction}>
-                <Icon source="help-circle" size={17} color="#FFFFFF" />
-                <Text style={styles.misoActionText}>Ask Miso</Text>
-              </View>
-            </View>
-            <Icon source="chevron-right" size={22} color={colors.tasks} />
-          </AnimatedPressable>
-        )}
-
-        {templates.length > 0 && (
-          <View style={styles.checklistsSection}>
-            <View style={styles.sectionHeadingRow}>
-              <Text style={styles.sectionHeading}>Checklists</Text>
-              <Text style={styles.sectionHint}>Start a routine</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.checklistsRow}
-            >
-              {templates.map((template) => (
-                <View key={template.id} style={styles.checklistCard}>
-                  <View style={styles.checklistCardTop}>
-                    <View style={styles.checklistIcon}>
-                      <Icon source="clipboard-check-outline" size={19} color={colors.tasks} />
-                    </View>
-                    <Text style={styles.checklistCategory}>
-                      {CATEGORY_LABEL[template.category] ?? "Checklist"}
-                    </Text>
-                  </View>
-                  <Text style={styles.checklistName} numberOfLines={2}>
-                    {template.name}
-                  </Text>
-                  <View style={styles.checklistFooter}>
-                    <Text style={styles.checklistCount}>
-                      {template.checklist_template_items.length} items
-                    </Text>
-                    <Button
-                      mode="contained"
-                      compact
-                      loading={startingTemplateId === template.id}
-                      disabled={startingTemplateId !== null}
-                      onPress={() => handleStartChecklist(template)}
-                      style={styles.checklistStartButton}
-                      contentStyle={styles.checklistStartContent}
-                      labelStyle={styles.checklistStartLabel}
-                    >
-                      Start
-                    </Button>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
+              )
+            })}
           </View>
-        )}
+        </ScrollView>
+      </View>
 
-        <View style={styles.handoffSection}>
-          <View style={styles.sectionHeadingRow}>
-            <Text style={styles.sectionHeading}>Shift handoff notes</Text>
-            <Text style={styles.sectionHint}>For the next crew</Text>
-          </View>
-
-          <View style={styles.handoffComposerCard}>
-            <TextInput
-              mode="outlined"
-              placeholder="Leave a note for the next shift..."
-              value={handoffNote}
-              onChangeText={setHandoffNote}
-              style={styles.handoffInput}
-              outlineStyle={styles.inputOutline}
-              multiline
-            />
-            <Button
-              mode="contained"
-              onPress={handlePostHandoff}
-              loading={postingHandoff}
-              disabled={postingHandoff || !handoffNote.trim()}
-              compact
-              style={styles.handoffPostButton}
-              labelStyle={styles.handoffPostLabel}
-            >
-              Post note
-            </Button>
-          </View>
-
-          {handoffs.slice(0, 5).map((handoff) => {
-            const author = memberFor(handoff.author_id)
-            const authorName = author?.display_name ?? "Team member"
-
-            return (
-              <View
-                key={handoff.id}
-                style={[styles.handoffCard, handoff.resolved && styles.handoffCardResolved]}
-              >
-                <AnimatedPressable
-                  style={styles.handoffRow}
-                  scaleTo={0.99}
-                  onPress={() => toggleHandoffResolved(handoff.id, handoff.resolved)}
-                >
-                  <Checkbox
-                    status={handoff.resolved ? "checked" : "unchecked"}
-                    onPress={() => toggleHandoffResolved(handoff.id, handoff.resolved)}
-                    color={colors.tasks}
-                    uncheckedColor={colors.textMuted}
-                  />
-                  <View style={styles.handoffTextCol}>
-                    <Text
-                      style={[
-                        styles.handoffNoteText,
-                        handoff.resolved && styles.taskTitleDone,
-                      ]}
-                    >
-                      {handoff.note}
-                    </Text>
-                    <View style={styles.handoffMetaRow}>
-                      <MemberAvatar
-                        name={authorName}
-                        avatarUrl={author?.avatar_url}
-                        size={26}
-                      />
-                      <Text style={styles.handoffMeta} numberOfLines={1}>
-                        {authorName} · {formatNoteTime(handoff.created_at)}
-                      </Text>
-                    </View>
-                  </View>
-                </AnimatedPressable>
+      <FormSheet
+        visible={modalVisible}
+        onDismiss={closeModal}
+        title="New task"
+        subtitle="Add a task for this shift and assign it to the team."
+      >
+        {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
+        <TextInput
+          label="Title"
+          value={formTitle}
+          onChangeText={setFormTitle}
+          mode="outlined"
+          style={styles.modalInput}
+          outlineStyle={styles.inputOutline}
+          autoFocus
+        />
+        <TextInput
+          label="Description (optional)"
+          value={formDescription}
+          onChangeText={setFormDescription}
+          mode="outlined"
+          multiline
+          numberOfLines={2}
+          style={styles.modalInput}
+          outlineStyle={styles.inputOutline}
+        />
+        {formDue.trim() ? (
+          <View style={styles.dueRow}>
+            <View style={styles.dueFields}>
+              <View style={styles.dueFieldFlex}>
+                <PickerField
+                  label="Due date"
+                  mode="date"
+                  value={parseFormDue(formDue)}
+                  onChange={(d) => {
+                    const next = new Date(parseFormDue(formDue))
+                    next.setFullYear(d.getFullYear(), d.getMonth(), d.getDate())
+                    setFormDue(formatFormDue(next))
+                  }}
+                />
               </View>
-            )
-          })}
-        </View>
-      </ScrollView>
-
-      <Sheet visible={modalVisible} onDismiss={closeModal}>
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <Text style={styles.modalTitle}>New task</Text>
-          <Text style={styles.modalSubtitle}>Add a task for this shift and assign it to the team.</Text>
-          {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
-          <TextInput
-            label="Title"
-            value={formTitle}
-            onChangeText={setFormTitle}
-            mode="outlined"
-            style={styles.modalInput}
-            outlineStyle={styles.inputOutline}
-            autoFocus
-          />
-          <TextInput
-            label="Description (optional)"
-            value={formDescription}
-            onChangeText={setFormDescription}
-            mode="outlined"
-            multiline
-            numberOfLines={2}
-            style={styles.modalInput}
-            outlineStyle={styles.inputOutline}
-          />
-          {formDue.trim() ? (
-            <View style={styles.dueRow}>
-              <View style={styles.dueFields}>
-                <View style={styles.dueFieldFlex}>
-                  <PickerField
-                    label="Due date"
-                    mode="date"
-                    value={parseFormDue(formDue)}
-                    onChange={(d) => {
-                      const next = new Date(parseFormDue(formDue))
-                      next.setFullYear(d.getFullYear(), d.getMonth(), d.getDate())
-                      setFormDue(formatFormDue(next))
-                    }}
-                  />
-                </View>
-                <View style={styles.dueFieldFlex}>
-                  <PickerField
-                    label="Due time"
-                    mode="time"
-                    value={parseFormDue(formDue)}
-                    onChange={(d) => {
-                      const next = new Date(parseFormDue(formDue))
-                      next.setHours(d.getHours(), d.getMinutes(), 0, 0)
-                      setFormDue(formatFormDue(next))
-                    }}
-                  />
-                </View>
+              <View style={styles.dueFieldFlex}>
+                <PickerField
+                  label="Due time"
+                  mode="time"
+                  value={parseFormDue(formDue)}
+                  onChange={(d) => {
+                    const next = new Date(parseFormDue(formDue))
+                    next.setHours(d.getHours(), d.getMinutes(), 0, 0)
+                    setFormDue(formatFormDue(next))
+                  }}
+                />
               </View>
-              <AnimatedPressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove due date"
-                onPress={() => setFormDue("")}
-                style={styles.dueClearButton}
-                scaleTo={0.9}
-              >
-                <Icon source="close-circle" size={20} color={colors.textMuted} />
-              </AnimatedPressable>
             </View>
-          ) : (
             <AnimatedPressable
               accessibilityRole="button"
-              onPress={() => setFormDue(formatFormDue(roundToNextHour(new Date())))}
-              style={styles.addDueButton}
-              scaleTo={0.97}
+              accessibilityLabel="Remove due date"
+              onPress={() => setFormDue("")}
+              style={styles.dueClearButton}
+              scaleTo={0.9}
             >
-              <Icon source="calendar-outline" size={18} color={colors.tasks} />
-              <Text style={styles.addDueText}>Add due date</Text>
+              <Icon source="close-circle" size={20} color={colors.textMuted} />
             </AnimatedPressable>
-          )}
-          <Text style={styles.assigneeLabel}>Assign to</Text>
-          <View style={styles.assigneeChipRow}>
+          </View>
+        ) : (
+          <AnimatedPressable
+            accessibilityRole="button"
+            onPress={() => setFormDue(formatFormDue(roundToNextHour(new Date())))}
+            style={styles.addDueButton}
+            scaleTo={0.97}
+          >
+            <Icon source="calendar-outline" size={18} color={colors.tasks} />
+            <Text style={styles.addDueText}>Add due date</Text>
+          </AnimatedPressable>
+        )}
+        <Text style={styles.assigneeLabel}>Assign to</Text>
+        <View style={styles.assigneeChipRow}>
+          <Chip
+            selected={formAssignee === null}
+            onPress={() => setFormAssignee(null)}
+            style={styles.assigneeChip}
+            showSelectedCheck
+          >
+            Unassigned
+          </Chip>
+          {members.map((member) => (
             <Chip
-              selected={formAssignee === null}
-              onPress={() => setFormAssignee(null)}
+              key={member.id}
+              selected={formAssignee === member.user_id}
+              onPress={() => setFormAssignee(member.user_id)}
               style={styles.assigneeChip}
               showSelectedCheck
             >
-              Unassigned
+              {member.display_name ?? "Member"}
             </Chip>
-            {members.map((member) => (
-              <Chip
-                key={member.id}
-                selected={formAssignee === member.user_id}
-                onPress={() => setFormAssignee(member.user_id)}
-                style={styles.assigneeChip}
-                showSelectedCheck
-              >
-                {member.display_name ?? "Member"}
-              </Chip>
-            ))}
-          </View>
-          <View style={styles.modalActions}>
-            <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              onPress={handleSave}
-              style={[styles.modalButton, styles.modalSaveButton]}
-            >
-              Save task
-            </Button>
-          </View>
-        </ScrollView>
-      </Sheet>
+          ))}
+        </View>
+        <View style={styles.modalActions}>
+          <Button mode="outlined" onPress={closeModal} style={styles.modalButton}>
+            Cancel
+          </Button>
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            style={[styles.modalButton, styles.modalSaveButton]}
+          >
+            Save task
+          </Button>
+        </View>
+      </FormSheet>
 
       <MisoChatModal visible={chatVisible} onDismiss={() => setChatVisible(false)} />
     </SafeAreaView>
@@ -721,32 +686,8 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     gap: 14,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 14,
-  },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  title: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    letterSpacing: -0.6,
-  },
-  progressLabel: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: colors.textSecondary,
-    fontVariant: ["tabular-nums"],
-  },
   addButton: {
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.tasks,
     flexShrink: 0,
   },
@@ -756,7 +697,7 @@ const styles = StyleSheet.create({
   },
   addButtonLabel: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
   },
   progressRow: {
     flexDirection: "row",
@@ -766,7 +707,7 @@ const styles = StyleSheet.create({
   progressBar: {
     flex: 1,
     height: 10,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.border,
   },
   progressPct: {
@@ -774,37 +715,9 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textSecondary,
     fontVariant: ["tabular-nums"],
-  },
-  filterRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  filterButton: {
-    flex: 1,
-    minHeight: 46,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  filterButtonSelected: {
-    borderColor: colors.tasks,
-    backgroundColor: colors.tasks,
-  },
-  filterButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.textSecondary,
-  },
-  filterButtonTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
   },
   scrollView: {
     flex: 1,
@@ -824,38 +737,34 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 18,
     lineHeight: 24,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.tasksDark,
   },
   sectionCountPill: {
     minWidth: 28,
     minHeight: 26,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 9,
     backgroundColor: colors.surfaceWarm,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   sectionCountText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.tasksDark,
     fontVariant: ["tabular-nums"],
   },
   sectionHint: {
     flexShrink: 1,
     fontSize: 12,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textMuted,
     textAlign: "right",
   },
   taskCard: {
     backgroundColor: colors.surface,
-    borderRadius: 18,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: radii.lg,
     boxShadow: "0 2px 8px rgba(26, 45, 34, 0.07)",
     overflow: "hidden",
   },
@@ -888,7 +797,7 @@ const styles = StyleSheet.create({
   taskTitle: {
     fontSize: 17,
     lineHeight: 23,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
   taskTitleDone: {
@@ -915,11 +824,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
     backgroundColor: colors.surfaceWarm,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   memberAvatarInitials: {
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.tasksDark,
   },
   taskMeta: {
@@ -927,6 +834,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
   },
   duePill: {
@@ -936,16 +844,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     paddingHorizontal: 9,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.statLogsBg,
-    borderWidth: 1,
-    borderColor: colors.statLogsBorder,
   },
   taskDue: {
     flexShrink: 1,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.managementDark,
     fontVariant: ["tabular-nums"],
   },
@@ -955,93 +861,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 34,
-    paddingHorizontal: 24,
-    borderRadius: 18,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  emptyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    backgroundColor: colors.surfaceWarm,
-  },
-  emptyText: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  emptySubtext: {
-    paddingTop: 3,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textMuted,
-    textAlign: "center",
-  },
-  misoBanner: {
-    minHeight: 104,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    borderCurve: "continuous",
-    backgroundColor: colors.surfaceWarm,
-    borderWidth: 1,
-    borderColor: colors.statStockBorder,
-    overflow: "hidden",
-  },
-  misoImageWrap: {
-    width: 74,
-    height: 74,
-    flexShrink: 0,
-    borderRadius: 37,
-    overflow: "hidden",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  misoImage: {
-    width: "100%",
-    height: "100%",
-  },
-  misoCopy: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: "flex-start",
-    gap: 9,
-  },
-  misoPrompt: {
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: "600",
-    color: colors.textPrimary,
-  },
-  misoAction: {
-    minHeight: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: colors.tasks,
-  },
-  misoActionText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "700",
-    color: "#FFFFFF",
   },
   checklistsSection: {
     paddingTop: 14,
@@ -1057,8 +876,7 @@ const styles = StyleSheet.create({
     minHeight: 152,
     padding: 15,
     gap: 10,
-    borderRadius: 18,
-    borderCurve: "continuous",
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1072,7 +890,7 @@ const styles = StyleSheet.create({
   checklistIcon: {
     width: 34,
     height: 34,
-    borderRadius: 11,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceWarm,
@@ -1081,7 +899,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11,
     lineHeight: 15,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.tasksDark,
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -1090,7 +908,7 @@ const styles = StyleSheet.create({
     minHeight: 42,
     fontSize: 16,
     lineHeight: 21,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
   checklistFooter: {
@@ -1103,11 +921,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 12,
     lineHeight: 17,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textMuted,
     fontVariant: ["tabular-nums"],
   },
   checklistStartButton: {
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.tasks,
   },
   checklistStartContent: {
@@ -1116,7 +935,7 @@ const styles = StyleSheet.create({
   },
   checklistStartLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
   },
   handoffSection: {
     paddingTop: 14,
@@ -1125,8 +944,7 @@ const styles = StyleSheet.create({
   handoffComposerCard: {
     padding: 14,
     gap: 10,
-    borderRadius: 18,
-    borderCurve: "continuous",
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1137,20 +955,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   inputOutline: {
-    borderRadius: 14,
+    borderRadius: radii.md,
   },
   handoffPostButton: {
     alignSelf: "flex-end",
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.tasks,
   },
   handoffPostLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
   },
   handoffCard: {
-    borderRadius: 18,
-    borderCurve: "continuous",
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1176,7 +993,7 @@ const styles = StyleSheet.create({
   handoffNoteText: {
     fontSize: 15,
     lineHeight: 21,
-    fontWeight: "600",
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textPrimary,
   },
   handoffMetaRow: {
@@ -1189,6 +1006,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 12,
     lineHeight: 17,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textMuted,
     fontVariant: ["tabular-nums"],
   },
@@ -1202,27 +1020,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 24,
   },
-  modalTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: "800",
-    color: colors.textPrimary,
-  },
-  modalSubtitle: {
-    paddingTop: 4,
-    paddingBottom: 18,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.textMuted,
-  },
   saveErrorText: {
     marginBottom: 16,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: radii.sm,
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.error,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#FBE7E5",
   },
   modalInput: {
     marginBottom: 16,
@@ -1257,21 +1063,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 7,
     marginBottom: 16,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
   },
   addDueText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.tasksDark,
   },
   assigneeLabel: {
     marginBottom: 9,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textSecondary,
   },
   assigneeChipRow: {
@@ -1292,7 +1098,7 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     minWidth: 104,
-    borderRadius: 999,
+    borderRadius: radii.pill,
   },
   modalSaveButton: {
     backgroundColor: colors.tasks,

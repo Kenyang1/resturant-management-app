@@ -1,12 +1,19 @@
 /**
- * Profile / Settings tab — Supabase user info, navigation shortcuts, demo toggles, support, logout.
+ * More tab (route: /profile) — identity, finance shortcut, team/account/support groups, sign out.
+ * Team members, pending invites, upcoming shifts, workspace/account details, and preferences all
+ * still live here — just consolidated into on-demand sheets instead of always-inline cards, per
+ * the More-hub redesign.
  */
 import { AnimatedPressable } from "@/components/AnimatedPressable"
+import { MisoChatModal } from "@/components/miso-chat-modal"
 import { PickerField } from "@/components/PickerField"
+import { ScreenHeader } from "@/components/ScreenHeader"
 import { Sheet } from "@/components/Sheet"
 import { confirmAction, notify } from "@/lib/alert"
 import { getAcceptInviteUrl } from "@/lib/authRedirect"
+import { money, sumByKind, toYMD } from "@/lib/finance"
 import { useActivityLog } from "@/lib/hooks/useActivityLog"
+import { useFinanceEntries } from "@/lib/hooks/useFinanceEntries"
 import { RestaurantRole, useRestaurantMembers } from "@/lib/hooks/useRestaurantMembers"
 import { useRestaurantInvites } from "@/lib/hooks/useRestaurantInvites"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
@@ -15,7 +22,7 @@ import { shareOrCopyLink } from "@/lib/shareLink"
 import { supabase } from "@/lib/supabase"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
-import { colors } from "@/lib/theme"
+import { colors, radii } from "@/lib/theme"
 import Constants from "expo-constants"
 import * as Haptics from "expo-haptics"
 import { Image } from "expo-image"
@@ -32,14 +39,7 @@ import {
   View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { Button, Card, Chip, SegmentedButtons, Switch, Text, TextInput } from "react-native-paper"
-
-function toYMD(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
+import { Button, Chip, SegmentedButtons, Switch, Text, TextInput } from "react-native-paper"
 
 /** "HH:MM" <-> Date, for the shift start/end picker fields (only the time-of-day is used). */
 function parseTimeString(hm: string): Date {
@@ -75,7 +75,7 @@ function triggerNavHaptic() {
 }
 
 export default function Profile() {
-  const { horizontal, scrollBottomPad } = useMobileLayout()
+  const { horizontal, scrollBottomPad, desktopFrameStyle } = useMobileLayout()
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -93,21 +93,35 @@ export default function Profile() {
   const [shiftStart, setShiftStart] = useState("")
   const [shiftEnd, setShiftEnd] = useState("")
   const [savingShift, setSavingShift] = useState(false)
+  const [teamSheetVisible, setTeamSheetVisible] = useState(false)
+  const [accountSheetVisible, setAccountSheetVisible] = useState(false)
+  const [notificationsSheetVisible, setNotificationsSheetVisible] = useState(false)
+  const [chatVisible, setChatVisible] = useState(false)
 
   const { data: members, updateOwnAvatar } = useRestaurantMembers()
   const { data: invites, createInvite } = useRestaurantInvites()
   const { data: shifts, insert: insertShift } = useShifts()
   const { data: activity, refetch: refetchActivity } = useActivityLog()
+  const { data: financeEntries } = useFinanceEntries()
   const [activityVisible, setActivityVisible] = useState(false)
   const myMember = members.find((m) => m.user_id === userId)
   const myRole = myMember?.role
   const canInvite = myRole === "owner" || myRole === "manager"
   const canManageShifts = myRole === "owner" || myRole === "manager"
+  // Same least-privileged rule as Finance: any staff membership hides the manager affordances.
+  const myRoles = members.filter((m) => m.user_id === userId).map((m) => m.role)
+  const canManageFinance = myRoles.length === 0 || !myRoles.includes("staff")
   const pendingInvites = invites.filter((i) => i.status === "pending")
   const upcomingShifts = shifts
     .filter((s) => new Date(s.ends_at) >= new Date())
     .slice(0, 5)
   const upcomingShiftCount = shifts.filter((s) => new Date(s.ends_at) >= new Date()).length
+
+  const todayYMD = toYMD(new Date())
+  const todaysRange = { start: todayYMD, end: todayYMD }
+  const todaysNet =
+    sumByKind(financeEntries, "revenue", todaysRange) -
+    sumByKind(financeEntries, "expense", todaysRange)
 
   useEffect(() => {
     // Read once on mount; add onAuthStateChange if you need live updates after login elsewhere.
@@ -254,7 +268,9 @@ export default function Profile() {
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
-      router.replace("/login")
+      // Re-run the root routing gate rather than hardcoding a destination: it sends native
+      // straight to sign-in and sends the web build to the landing page, same as a fresh visit.
+      router.replace("/")
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not sign out. Try again."
       notify("Sign out failed", message)
@@ -282,82 +298,197 @@ export default function Profile() {
     )
   }
 
+  function goToFinance() {
+    triggerNavHaptic()
+    router.push("/(tabs)/finance")
+  }
+
   const appName =
     (Constants.expoConfig?.name as string | undefined) ?? "Restaurant app"
   const appVersion = Constants.expoConfig?.version ?? "1.0.0"
 
   return (
     <SafeAreaView style={styles.safeRoot} edges={["top", "left", "right"]}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.content,
-          { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
-        ]}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
-        </View>
+      <View style={desktopFrameStyle}>
+        <ScrollView
+          style={styles.container}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.content,
+            { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
+          ]}
+        >
+          <ScreenHeader title="More" />
 
-        <View style={styles.profileHero}>
-          <AnimatedPressable
-            accessibilityRole="button"
-            accessibilityLabel="Change profile photo"
-            onPress={handleChangeAvatar}
-            disabled={uploadingAvatar}
-            style={styles.avatar}
-          >
-            {uploadingAvatar ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : myMember?.avatar_url ? (
-              <Image
-                source={{ uri: myMember.avatar_url }}
-                style={styles.avatarImage}
-                contentFit="cover"
-                accessibilityLabel={myMember.display_name ?? "Profile photo"}
-              />
-            ) : (
-              <Text style={styles.avatarText}>{initial}</Text>
-            )}
-            <View style={styles.avatarEditBadge}>
-              <Ionicons name="camera" size={17} color="#FFFFFF" />
-            </View>
-          </AnimatedPressable>
-          <View style={styles.profileTextCol}>
-            <Text style={styles.profileName} numberOfLines={1}>
-              {myMember?.display_name?.trim() || "Restaurant teammate"}
-            </Text>
-            <Text style={styles.profileEmail} numberOfLines={2}>
-              {userEmail ?? "Not signed in"}
-            </Text>
-            <View style={styles.roleChip}>
-              <Text style={styles.roleChipText}>{myRole ?? "staff"}</Text>
+          <View style={styles.profileHero}>
+            <AnimatedPressable
+              accessibilityRole="button"
+              accessibilityLabel="Change profile photo"
+              onPress={handleChangeAvatar}
+              disabled={uploadingAvatar}
+              style={styles.avatar}
+            >
+              {uploadingAvatar ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : myMember?.avatar_url ? (
+                <Image
+                  source={{ uri: myMember.avatar_url }}
+                  style={styles.avatarImage}
+                  contentFit="cover"
+                  accessibilityLabel={myMember.display_name ?? "Profile photo"}
+                />
+              ) : (
+                <Text style={styles.avatarText}>{initial}</Text>
+              )}
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={17} color="#FFFFFF" />
+              </View>
+            </AnimatedPressable>
+            <View style={styles.profileTextCol}>
+              <Text style={styles.profileName} numberOfLines={1}>
+                {myMember?.display_name?.trim() || "Restaurant teammate"}
+              </Text>
+              <Text style={styles.profileEmail} numberOfLines={2}>
+                {userEmail ?? "Not signed in"}
+              </Text>
+              <View style={styles.roleChip}>
+                <Text style={styles.roleChipText}>{myRole ?? "staff"}</Text>
+              </View>
             </View>
           </View>
-        </View>
 
-        <Card style={[styles.card, styles.workspaceCard]} mode="contained">
-          <Card.Content style={styles.workspaceContent}>
-            <View style={styles.workspaceTopRow}>
-              <View style={styles.workspaceIcon}>
-                <Ionicons name="storefront-outline" size={23} color={colors.primary} />
-              </View>
-              <View style={styles.workspaceCopy}>
-                <Text style={styles.workspaceTitle}>Restaurant workspace</Text>
-                <Text style={styles.workspaceMeta}>
-                  {members.length} member{members.length === 1 ? "" : "s"}
-                  {"  •  "}
-                  {upcomingShiftCount} upcoming shift{upcomingShiftCount === 1 ? "" : "s"}
-                </Text>
-              </View>
+          <AnimatedPressable style={styles.netHeroCard} onPress={goToFinance} scaleTo={0.98}>
+            <View style={styles.netHeroCopy}>
+              <Text style={styles.netHeroLabel}>Today&apos;s net</Text>
+              <Text style={styles.netHeroValue} numberOfLines={1} adjustsFontSizeToFit>
+                {money.format(todaysNet)}
+              </Text>
             </View>
-          </Card.Content>
-        </Card>
+            <View style={styles.netHeroAction}>
+              <Ionicons
+                name={todaysNet >= 0 ? "trending-up" : "trending-down"}
+                size={18}
+                color={colors.primaryDark}
+              />
+              <Text style={styles.netHeroActionText}>View finance</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primaryDark} />
+            </View>
+          </AnimatedPressable>
 
-        <Text style={styles.groupLabel}>Team &amp; scheduling</Text>
-        <Card style={styles.card} mode="elevated">
+          <Text style={styles.groupLabel}>Management</Text>
+          <View style={styles.card}>
+            <MenuRow
+              icon="wallet"
+              iconColor={colors.finance}
+              label="Finance"
+              description="Track revenue and expenses"
+              onPress={goToFinance}
+            />
+            <RowDivider />
+            <MenuRow
+              icon="people-outline"
+              iconColor={colors.primary}
+              label="Team & shifts"
+              description={`${members.length} member${members.length === 1 ? "" : "s"} • ${upcomingShiftCount} upcoming`}
+              onPress={() => setTeamSheetVisible(true)}
+            />
+            {canManageFinance && (
+              <>
+                <RowDivider />
+                <MenuRow
+                  icon="checkmark-done-outline"
+                  iconColor={colors.management}
+                  label="Approvals"
+                  description="Review pending transaction requests"
+                  onPress={goToFinance}
+                />
+              </>
+            )}
+          </View>
+
+          <Text style={styles.groupLabel}>Account</Text>
+          <View style={styles.card}>
+            <MenuRow
+              icon="storefront-outline"
+              iconColor={colors.primary}
+              label="Profile & restaurant"
+              description="Workspace and account details"
+              onPress={() => setAccountSheetVisible(true)}
+            />
+            <RowDivider />
+            <MenuRow
+              icon="notifications-outline"
+              iconColor={colors.primary}
+              label="Notifications"
+              onPress={() => setNotificationsSheetVisible(true)}
+            />
+            <RowDivider />
+            <MenuRow
+              icon="time-outline"
+              iconColor={colors.settings}
+              label="Activity history"
+              description="Who changed what, and when"
+              onPress={() => {
+                refetchActivity()
+                setActivityVisible(true)
+              }}
+            />
+          </View>
+
+          <Text style={styles.groupLabel}>Support</Text>
+          <View style={styles.card}>
+            <MenuRow
+              image={mascotImages.ask}
+              label="Ask Miso"
+              description="Get help fast"
+              onPress={() => setChatVisible(true)}
+            />
+            <RowDivider />
+            <MenuRow
+              icon="help-circle-outline"
+              iconColor={colors.secondary}
+              label="Help & tips"
+              onPress={showHelp}
+            />
+            <RowDivider />
+            <MenuRow
+              icon="information-circle-outline"
+              iconColor={colors.primary}
+              label="About us"
+              onPress={() => setAboutVisible(true)}
+            />
+            <RowDivider />
+            <MenuRow
+              icon="mail-outline"
+              iconColor={colors.settings}
+              label="Contact support"
+              onPress={openSupportEmail}
+            />
+          </View>
+
+          <AnimatedPressable
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            accessibilityState={{ disabled: loggingOut, busy: loggingOut }}
+            onPress={handleLogout}
+            disabled={loggingOut}
+            style={styles.logoutButton}
+          >
+            {loggingOut ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <Ionicons name="log-out-outline" size={18} color={colors.error} />
+            )}
+            <Text style={styles.logoutLabel}>{loggingOut ? "Logging out…" : "Log out"}</Text>
+          </AnimatedPressable>
+        </ScrollView>
+      </View>
+
+      <Sheet visible={teamSheetVisible} onDismiss={() => setTeamSheetVisible(false)}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={styles.aboutModalTitle}>Team & shifts</Text>
+
           <View style={styles.sectionCardHeader}>
             <View style={styles.sectionCardIcon}>
               <Ionicons name="people-outline" size={21} color={colors.primary} />
@@ -407,23 +538,10 @@ export default function Profile() {
               />
             </View>
           )}
-        </Card>
 
-        {canInvite && pendingInvites.length > 0 && (
-          <Card style={styles.card} mode="elevated">
-            <Card.Content style={styles.cardContentTight}>
-              <View style={styles.pendingHeader}>
-                <View style={styles.pendingHeaderIcon}>
-                  <Ionicons name="mail-unread-outline" size={19} color={colors.managementDark} />
-                </View>
-                <View style={styles.sectionCardCopy}>
-                  <Text style={styles.sectionCardTitle}>Pending invitations</Text>
-                  <Text style={styles.sectionCardSubtitle}>Waiting to join your workspace</Text>
-                </View>
-                <View style={styles.countPill}>
-                  <Text style={styles.countPillText}>{pendingInvites.length}</Text>
-                </View>
-              </View>
+          {canInvite && pendingInvites.length > 0 && (
+            <>
+              <Text style={styles.subgroupLabel}>Pending invitations</Text>
               <View style={styles.pendingDivider} />
               {pendingInvites.map((invite) => (
                 <View key={invite.id} style={styles.pendingInviteRow}>
@@ -455,24 +573,20 @@ export default function Profile() {
                   </Button>
                 </View>
               ))}
-            </Card.Content>
-          </Card>
-        )}
+            </>
+          )}
 
-        <Text style={styles.subgroupLabel}>Upcoming shifts</Text>
-        <Card style={styles.card} mode="elevated">
+          <Text style={styles.subgroupLabel}>Upcoming shifts</Text>
           {upcomingShifts.length === 0 ? (
-            <Card.Content style={styles.cardContentTight}>
-              <View style={styles.emptyShift}>
-                <View style={styles.emptyShiftIcon}>
-                  <Ionicons name="calendar-clear-outline" size={22} color={colors.primary} />
-                </View>
-                <View style={styles.pendingInviteTextCol}>
-                  <Text style={styles.emptyShiftTitle}>No upcoming shifts</Text>
-                  <Text style={styles.emptyShiftText}>The next scheduled shift will appear here.</Text>
-                </View>
+            <View style={styles.emptyShift}>
+              <View style={styles.emptyShiftIcon}>
+                <Ionicons name="calendar-clear-outline" size={22} color={colors.primary} />
               </View>
-            </Card.Content>
+              <View style={styles.pendingInviteTextCol}>
+                <Text style={styles.emptyShiftTitle}>No upcoming shifts</Text>
+                <Text style={styles.emptyShiftText}>The next scheduled shift will appear here.</Text>
+              </View>
+            </View>
           ) : (
             upcomingShifts.map((shift, index) => {
               const member = members.find((m) => m.user_id === shift.user_id)
@@ -520,165 +634,66 @@ export default function Profile() {
               />
             </>
           )}
-        </Card>
+        </ScrollView>
+      </Sheet>
 
-        <Text style={styles.groupLabel}>Workspace shortcuts</Text>
-        <Card style={styles.card} mode="elevated">
-          <MenuRow
-            icon="home"
-            iconColor={colors.primary}
-            label="Home dashboard"
-            description="Today&apos;s overview and priorities"
-            onPress={() => {
-              triggerNavHaptic()
-              router.push("./index")
-            }}
-          />
-          <RowDivider />
-          <MenuRow
-            icon="albums"
-            iconColor={colors.inventory}
-            label="Inventory log"
-            description="Review stock levels and storage"
-            onPress={() => {
-              triggerNavHaptic()
-              router.push("/(tabs)/inventory-log")
-            }}
-          />
-          <RowDivider />
-          <MenuRow
-            icon="wallet"
-            iconColor={colors.finance}
-            label="Finance"
-            description="Track revenue and expenses"
-            onPress={() => {
-              triggerNavHaptic()
-              router.push("/(tabs)/finance")
-            }}
-          />
-          <RowDivider />
-          <MenuRow
-            icon="document-text"
-            iconColor={colors.management}
-            label="Management logs"
-            description="Maintenance, incidents, and daily notes"
-            onPress={() => {
-              triggerNavHaptic()
-              router.push("/(tabs)/management-log")
-            }}
-          />
-          <RowDivider />
-          <MenuRow
-            icon="time-outline"
-            iconColor={colors.settings}
-            label="Activity history"
-            description="Who changed what, and when"
-            onPress={() => {
-              refetchActivity()
-              setActivityVisible(true)
-            }}
-          />
-        </Card>
+      <Sheet visible={accountSheetVisible} onDismiss={() => setAccountSheetVisible(false)}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={styles.aboutModalTitle}>Profile & restaurant</Text>
 
-        <Text style={styles.groupLabel}>Preferences</Text>
-        <Card style={styles.card} mode="elevated">
-          <View style={styles.switchRow}>
-            <View style={styles.switchRowLeft}>
-              <View style={styles.preferenceIconWrap}>
-                <Ionicons
-                  name="notifications-outline"
-                  size={21}
-                  color={colors.primary}
-                  style={styles.switchIcon}
-                />
-              </View>
-              <View style={styles.switchLabels}>
-                <Text style={styles.switchTitle}>Low-stock reminders</Text>
-                <Text style={styles.switchSubtitle}>
-                  Demo toggle — connect to push later
-                </Text>
-              </View>
+          <View style={styles.workspaceTopRow}>
+            <View style={styles.workspaceIcon}>
+              <Ionicons name="storefront-outline" size={23} color={colors.primary} />
             </View>
-            <Switch
-              value={demoNotifications}
-              onValueChange={setDemoNotifications}
-              color={colors.primary}
-            />
+            <View style={styles.workspaceCopy}>
+              <Text style={styles.workspaceTitle}>Restaurant workspace</Text>
+              <Text style={styles.workspaceMeta}>
+                {members.length} member{members.length === 1 ? "" : "s"}
+                {"  •  "}
+                {upcomingShiftCount} upcoming shift{upcomingShiftCount === 1 ? "" : "s"}
+              </Text>
+            </View>
           </View>
-        </Card>
 
-        <Text style={styles.groupLabel}>Support</Text>
-        <Card style={styles.card} mode="elevated">
-          <MenuRow
-            icon="help-circle-outline"
-            iconColor={colors.secondary}
-            label="Help & tips"
-            onPress={showHelp}
-          />
-          <RowDivider />
-          <MenuRow
-            icon="information-circle-outline"
-            iconColor={colors.primary}
-            label="About us"
-            onPress={() => setAboutVisible(true)}
-          />
-          <RowDivider />
-          <MenuRow
-            icon="mail-outline"
-            iconColor={colors.settings}
-            label="Contact support"
-            onPress={openSupportEmail}
-          />
-        </Card>
-
-        <Text style={styles.groupLabel}>Account details</Text>
-        <Card style={styles.card} mode="elevated">
-          <Card.Content style={styles.cardContentTight}>
-            <View style={styles.accountRow}>
-              <View style={styles.accountIcon}>
-                <Ionicons name="lock-closed-outline" size={21} color={colors.primary} />
-              </View>
-              <View style={styles.pendingInviteTextCol}>
-            <Text style={styles.label}>Signed in with</Text>
-            <Text style={styles.value}>{userEmail ?? "—"}</Text>
-            <Text style={styles.meta}>
-              Sign-in is managed with Supabase Authentication.
-            </Text>
-              </View>
+          <Text style={styles.subgroupLabel}>Account details</Text>
+          <View style={styles.accountRow}>
+            <View style={styles.accountIcon}>
+              <Ionicons name="lock-closed-outline" size={21} color={colors.primary} />
             </View>
-          </Card.Content>
-        </Card>
-
-        <Text style={styles.subgroupLabel}>App information</Text>
-        <Card style={styles.card} mode="elevated">
-          <Card.Content style={styles.cardContentTight}>
-            <View style={styles.aboutRow}>
-              <Text style={styles.infoRowLabel}>App</Text>
-              <Text style={styles.value}>{appName}</Text>
+            <View style={styles.pendingInviteTextCol}>
+              <Text style={styles.label}>Signed in with</Text>
+              <Text style={styles.value}>{userEmail ?? "—"}</Text>
+              <Text style={styles.meta}>Sign-in is managed with Supabase Authentication.</Text>
             </View>
-            <View style={[styles.aboutRow, styles.aboutRowSpaced]}>
-              <Text style={styles.infoRowLabel}>Version</Text>
-              <Text style={styles.value}>{appVersion}</Text>
-            </View>
-          </Card.Content>
-        </Card>
+          </View>
 
-        <AnimatedPressable
-          accessibilityRole="button"
-          accessibilityLabel="Log out"
-          accessibilityState={{ disabled: loggingOut, busy: loggingOut }}
-          onPress={handleLogout}
-          disabled={loggingOut}
-          style={styles.logoutButton}
-        >
-          {loggingOut ? (
-            <ActivityIndicator size="small" color={colors.error} />
-          ) : (
-            <Ionicons name="log-out-outline" size={18} color={colors.error} />
-          )}
-          <Text style={styles.logoutLabel}>{loggingOut ? "Logging out…" : "Log out"}</Text>
-        </AnimatedPressable>
-      </ScrollView>
+          <Text style={styles.subgroupLabel}>App information</Text>
+          <View style={styles.aboutRow}>
+            <Text style={styles.infoRowLabel}>App</Text>
+            <Text style={styles.value}>{appName}</Text>
+          </View>
+          <View style={[styles.aboutRow, styles.aboutRowSpaced]}>
+            <Text style={styles.infoRowLabel}>Version</Text>
+            <Text style={styles.value}>{appVersion}</Text>
+          </View>
+        </ScrollView>
+      </Sheet>
+
+      <Sheet visible={notificationsSheetVisible} onDismiss={() => setNotificationsSheetVisible(false)}>
+        <Text style={styles.aboutModalTitle}>Notifications</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.switchRowLeft}>
+            <View style={styles.preferenceIconWrap}>
+              <Ionicons name="notifications-outline" size={21} color={colors.primary} style={styles.switchIcon} />
+            </View>
+            <View style={styles.switchLabels}>
+              <Text style={styles.switchTitle}>Low-stock reminders</Text>
+              <Text style={styles.switchSubtitle}>Demo toggle — connect to push later</Text>
+            </View>
+          </View>
+          <Switch value={demoNotifications} onValueChange={setDemoNotifications} color={colors.primary} />
+        </View>
+      </Sheet>
 
       <Sheet visible={aboutVisible} onDismiss={() => setAboutVisible(false)}>
         <View style={styles.aboutModalImageWrap}>
@@ -869,6 +884,8 @@ export default function Profile() {
           Close
         </Button>
       </Sheet>
+
+      <MisoChatModal visible={chatVisible} onDismiss={() => setChatVisible(false)} />
     </SafeAreaView>
   )
 }
@@ -878,9 +895,10 @@ function RowDivider() {
   return <View style={styles.divider} />
 }
 
-/** One settings row: icon, label, optional chevron, full-row press target. */
+/** One settings row: icon-or-image, label, optional chevron, full-row press target. */
 function MenuRow({
   icon,
+  image,
   iconColor,
   label,
   description,
@@ -888,8 +906,9 @@ function MenuRow({
   onPress,
   showChevron = true,
 }: {
-  icon: keyof typeof Ionicons.glyphMap
-  iconColor: string
+  icon?: keyof typeof Ionicons.glyphMap
+  image?: number | { uri: string }
+  iconColor?: string
   label: string
   description?: string
   actionLabel?: string
@@ -898,9 +917,15 @@ function MenuRow({
 }) {
   return (
     <AnimatedPressable onPress={onPress} style={styles.menuRow} scaleTo={0.99}>
-      <View style={[styles.menuIconWrap, { borderColor: `${iconColor}55` }]}>
-        <Ionicons name={icon} size={22} color={iconColor} />
-      </View>
+      {image ? (
+        <View style={styles.menuImageWrap}>
+          <Image source={image} style={styles.menuImage} contentFit="contain" />
+        </View>
+      ) : (
+        <View style={[styles.menuIconWrap, { borderColor: `${iconColor}55` }]}>
+          <Ionicons name={icon!} size={22} color={iconColor} />
+        </View>
+      )}
       <View style={styles.menuCopy}>
         <Text style={styles.menuLabel}>{label}</Text>
         {description && <Text style={styles.menuDescription}>{description}</Text>}
@@ -927,20 +952,11 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: 12,
-  },
-  header: {
-    marginBottom: 2,
-  },
-  title: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    letterSpacing: -0.7,
+    gap: 10,
   },
   groupLabel: {
     fontSize: 17,
-    fontWeight: "700",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.primary,
     letterSpacing: -0.2,
     marginBottom: 7,
@@ -949,30 +965,25 @@ const styles = StyleSheet.create({
   },
   subgroupLabel: {
     fontSize: 16,
-    fontWeight: "700",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.primary,
     letterSpacing: -0.15,
     marginBottom: 7,
-    marginTop: 3,
+    marginTop: 14,
     marginLeft: 2,
   },
   card: {
-    marginBottom: 10,
-    borderRadius: 15,
-    elevation: 0,
+    borderRadius: radii.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     boxShadow: "0 1px 2px rgba(31, 55, 40, 0.05)",
-  },
-  cardContentTight: {
-    paddingVertical: 13,
-    paddingHorizontal: 14,
+    overflow: "hidden",
   },
   profileHero: {
     alignItems: "center",
     paddingTop: 2,
-    paddingBottom: 16,
+    paddingBottom: 4,
     gap: 12,
   },
   avatar: {
@@ -994,7 +1005,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: 40,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.primary,
   },
   avatarEditBadge: {
@@ -1018,13 +1029,14 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     fontSize: 25,
     lineHeight: 31,
-    fontWeight: "700",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.textPrimary,
     letterSpacing: -0.3,
   },
   profileEmail: {
     maxWidth: "100%",
     fontSize: 13,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     marginTop: 3,
   },
@@ -1032,7 +1044,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.surfaceWarm,
     borderWidth: 1,
     borderColor: colors.statStockBorder,
@@ -1040,22 +1052,54 @@ const styles = StyleSheet.create({
   },
   roleChipText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.primary,
     textTransform: "capitalize",
   },
-  workspaceCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+  netHeroCard: {
+    minHeight: 84,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: radii.lg,
+    backgroundColor: colors.softSage,
   },
-  workspaceContent: {
-    paddingVertical: 12,
-    paddingHorizontal: 13,
+  netHeroCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  netHeroLabel: {
+    fontSize: 13,
+    fontFamily: "Nunito_700Bold",
+    color: colors.primaryDark,
+  },
+  netHeroValue: {
+    fontSize: 26,
+    fontFamily: "Nunito_800ExtraBold",
+    color: colors.textPrimary,
+    letterSpacing: -0.4,
+    fontVariant: ["tabular-nums"],
+    marginTop: 2,
+  },
+  netHeroAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+  },
+  netHeroActionText: {
+    fontSize: 13,
+    fontFamily: "Nunito_700Bold",
+    color: colors.primaryDark,
   },
   workspaceTopRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 11,
+    marginBottom: 4,
   },
   workspaceIcon: {
     width: 42,
@@ -1071,12 +1115,13 @@ const styles = StyleSheet.create({
   },
   workspaceTitle: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
   workspaceMeta: {
     fontSize: 12,
     lineHeight: 17,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -1084,13 +1129,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 13,
   },
   sectionCardIcon: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceWarm,
@@ -1101,30 +1144,25 @@ const styles = StyleSheet.create({
   },
   sectionCardTitle: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
-  },
-  sectionCardSubtitle: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textSecondary,
-    marginTop: 2,
   },
   sectionCardCount: {
     fontSize: 12,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     fontVariant: ["tabular-nums"],
   },
   sectionDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
+    marginVertical: 10,
   },
   teamRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 9,
-    paddingHorizontal: 13,
     gap: 10,
   },
   teamRowLeft: {
@@ -1151,44 +1189,31 @@ const styles = StyleSheet.create({
   },
   teamAvatarText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.primary,
   },
   teamMemberName: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textPrimary,
     flexShrink: 1,
   },
   teamYouTag: {
     fontSize: 11,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.primary,
-    fontWeight: "600",
   },
   teamRoleBadge: {
     overflow: "hidden",
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.primary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
     backgroundColor: colors.surfaceWarm,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  pendingHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  pendingHeaderIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.statLogsBg,
   },
   countPill: {
     minWidth: 27,
@@ -1199,16 +1224,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     backgroundColor: colors.statLogsBg,
   },
-  countPillText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: colors.managementDark,
-    fontVariant: ["tabular-nums"],
-  },
   pendingDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginTop: 11,
+    marginBottom: 4,
   },
   pendingInviteRow: {
     flexDirection: "row",
@@ -1229,7 +1248,7 @@ const styles = StyleSheet.create({
   },
   pendingAvatarText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.managementDark,
   },
   pendingInviteTextCol: {
@@ -1249,12 +1268,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   copyButton: {
-    borderRadius: 999,
+    borderRadius: radii.pill,
     borderColor: colors.statStockBorder,
   },
   copyButtonLabel: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     marginHorizontal: 8,
   },
   inviteRolePicker: {
@@ -1268,7 +1287,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 11,
     paddingVertical: 9,
-    paddingHorizontal: 13,
   },
   shiftAvatar: {
     width: 36,
@@ -1287,7 +1305,7 @@ const styles = StyleSheet.create({
   },
   shiftAvatarText: {
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.primary,
   },
   emptyShift: {
@@ -1298,25 +1316,26 @@ const styles = StyleSheet.create({
   emptyShiftIcon: {
     width: 36,
     height: 36,
-    borderRadius: 11,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceWarm,
   },
   emptyShiftTitle: {
     fontSize: 14,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
   emptyShiftText: {
     fontSize: 12,
     lineHeight: 17,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     marginTop: 2,
   },
   assigneeLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -1343,11 +1362,24 @@ const styles = StyleSheet.create({
   menuIconWrap: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: radii.sm,
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 0,
+  },
+  menuImageWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.softSage,
+    overflow: "hidden",
+  },
+  menuImage: {
+    width: 30,
+    height: 30,
   },
   menuCopy: {
     flex: 1,
@@ -1355,12 +1387,13 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
   menuDescription: {
     fontSize: 12,
     lineHeight: 16,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -1370,12 +1403,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.surfaceWarm,
   },
   menuActionText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.primary,
   },
   divider: {
@@ -1388,8 +1421,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 58,
-    paddingVertical: 8,
-    paddingHorizontal: 13,
+    marginTop: 8,
   },
   switchRowLeft: {
     flex: 1,
@@ -1404,7 +1436,7 @@ const styles = StyleSheet.create({
   preferenceIconWrap: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceWarm,
@@ -1416,28 +1448,30 @@ const styles = StyleSheet.create({
   },
   switchTitle: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
   switchSubtitle: {
     fontSize: 12,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textMuted,
     marginTop: 2,
     lineHeight: 16,
   },
   label: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textMuted,
     marginBottom: 4,
   },
   value: {
     fontSize: 14,
     color: colors.textPrimary,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
   },
   meta: {
     fontSize: 12,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     marginTop: 3,
     lineHeight: 17,
@@ -1450,14 +1484,14 @@ const styles = StyleSheet.create({
   accountIcon: {
     width: 36,
     height: 36,
-    borderRadius: 11,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceWarm,
   },
   infoRowLabel: {
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.textSecondary,
   },
   aboutRow: {
@@ -1474,7 +1508,7 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     minHeight: 44,
-    marginTop: 2,
+    marginTop: 8,
     marginBottom: 6,
     flexDirection: "row",
     alignItems: "center",
@@ -1483,14 +1517,14 @@ const styles = StyleSheet.create({
   },
   logoutLabel: {
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.error,
   },
   modalIcon: {
     alignSelf: "center",
     width: 54,
     height: 54,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceWarm,
@@ -1501,6 +1535,7 @@ const styles = StyleSheet.create({
   modalSubtitle: {
     fontSize: 13,
     lineHeight: 18,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     textAlign: "center",
     marginTop: -5,
@@ -1511,7 +1546,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 150,
     marginBottom: 14,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     overflow: "hidden",
     backgroundColor: colors.surfaceWarm,
   },
@@ -1521,7 +1556,7 @@ const styles = StyleSheet.create({
   },
   aboutModalTitle: {
     fontSize: 23,
-    fontWeight: "700",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.textPrimary,
     textAlign: "center",
     marginBottom: 14,
@@ -1534,15 +1569,16 @@ const styles = StyleSheet.create({
   aboutModalBody: {
     fontSize: 15,
     lineHeight: 22,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
   },
   aboutModalClose: {
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.primary,
     marginTop: 2,
   },
   aboutModalCloseLabel: {
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
   },
   activityScroll: {
     maxHeight: 340,
@@ -1557,10 +1593,11 @@ const styles = StyleSheet.create({
   activityText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
   },
   activityActor: {
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textPrimary,
   },
 })

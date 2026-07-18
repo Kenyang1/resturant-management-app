@@ -3,17 +3,21 @@
  * Data: Supabase table `management_log`.
  */
 import { AnimatedPressable } from "@/components/AnimatedPressable"
+import { EmptyState } from "@/components/EmptyState"
+import { FormSheet } from "@/components/FormSheet"
+import { MisoCallout } from "@/components/MisoCallout"
 import { MisoChatModal } from "@/components/miso-chat-modal"
-import { Sheet } from "@/components/Sheet"
+import { PrimaryAction } from "@/components/PrimaryAction"
+import { ScreenHeader } from "@/components/ScreenHeader"
+import { SearchField } from "@/components/SearchField"
 import { Skeleton } from "@/components/Skeleton"
 import { confirmAction } from "@/lib/alert"
 import { ManagementLogItem, useManagementLog } from "@/lib/hooks/useManagementLog"
 import { getErrorMessage } from "@/lib/hooks/useSupabaseTable"
 import { useMobileLayout } from "@/lib/layout"
 import { mascotImages } from "@/lib/mascotImages"
-import { colors } from "@/lib/theme"
+import { colors, radii } from "@/lib/theme"
 import { Ionicons } from "@expo/vector-icons"
-import { Image } from "expo-image"
 import { useMemo, useState } from "react"
 import { Keyboard, ScrollView, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -108,7 +112,7 @@ function matchesSearch(item: ManagementLogItem, query: string) {
 }
 
 export default function ManagementLog() {
-  const { horizontal, scrollBottomPad } = useMobileLayout()
+  const { horizontal, scrollBottomPad, desktopFrameStyle } = useMobileLayout()
   const { data: managementLog, loading, error, insert, update, remove } = useManagementLog()
   const [modalVisible, setModalVisible] = useState(false)
   const [editingItem, setEditingItem] = useState<ManagementLogItem | null>(null)
@@ -220,16 +224,14 @@ export default function ManagementLog() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
-          <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.title}>Management logs</Text>
-            </View>
+        <View style={desktopFrameStyle}>
+          <View style={[styles.scrollContent, { paddingHorizontal: horizontal }]}>
+            <ScreenHeader title="Management logs" />
+            <Skeleton style={styles.summaryCard} />
+            <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
+            <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
+            <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
           </View>
-          <Skeleton style={styles.summaryCard} />
-          <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
-          <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
-          <Skeleton style={[styles.logCard, styles.skeletonLogCard]} />
         </View>
       </SafeAreaView>
     )
@@ -244,264 +246,191 @@ export default function ManagementLog() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <ScrollView
-        style={styles.scrollView}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.title}>Management logs</Text>
-            <Text style={styles.subtitle}>
-              {managementLog.length} {managementLog.length === 1 ? "entry" : "entries"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Operations overview</Text>
-          <View style={styles.metricsRow}>
-            {overviewMetrics.map((metric, index) => (
-              <View
-                key={metric.label}
-                style={[styles.metric, index < overviewMetrics.length - 1 && styles.metricDivider]}
-              >
-                <Ionicons name={metric.icon} size={23} color="#FFFFFF" />
-                <Text style={styles.metricValue}>{metric.value}</Text>
-                <Text style={styles.metricLabel} numberOfLines={1}>
-                  {metric.label}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <TextInput
-          mode="outlined"
-          placeholder="Search management logs"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={styles.searchInput}
-          outlineStyle={styles.searchOutline}
-          contentStyle={styles.searchContent}
-          left={<TextInput.Icon icon="magnify" color={colors.textSecondary} />}
-          right={
-            searchQuery.length > 0 ? (
-              <TextInput.Icon icon="close" onPress={() => setSearchQuery("")} />
-            ) : undefined
-          }
-        />
-
-        <AnimatedPressable
-          accessibilityRole="button"
-          accessibilityLabel="Ask Miso about management logs"
-          onPress={() => setChatVisible(true)}
-          style={styles.misoBanner}
-          scaleTo={0.98}
+      <View style={desktopFrameStyle}>
+        <ScrollView
+          style={styles.scrollView}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingHorizontal: horizontal, paddingBottom: scrollBottomPad },
+          ]}
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.misoImageWrap}>
-            <Image
-              source={mascotImages.chat}
-              style={styles.misoImage}
-              contentFit="cover"
-              accessibilityLabel="Miso assistant"
-            />
-          </View>
-          <View style={styles.misoCopy}>
-            <Text style={styles.misoTitle}>Need help reviewing your logs?</Text>
-            <Text style={styles.misoText}>Miso can summarize recent activity and incidents.</Text>
-            <View style={styles.misoButton}>
-              <Ionicons name="help-circle" size={17} color="#FFFFFF" />
-              <Text style={styles.misoButtonText}>Ask Miso</Text>
+          <ScreenHeader
+            title="Management logs"
+            subtitle={`${managementLog.length} ${managementLog.length === 1 ? "entry" : "entries"}`}
+          />
+
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Operations overview</Text>
+            <View style={styles.metricsRow}>
+              {overviewMetrics.map((metric, index) => (
+                <View
+                  key={metric.label}
+                  style={[styles.metric, index < overviewMetrics.length - 1 && styles.metricDivider]}
+                >
+                  <Ionicons name={metric.icon} size={23} color="#FFFFFF" />
+                  <Text style={styles.metricValue}>{metric.value}</Text>
+                  <Text style={styles.metricLabel} numberOfLines={1}>
+                    {metric.label}
+                  </Text>
+                </View>
+              ))}
             </View>
           </View>
-        </AnimatedPressable>
 
-        <View style={styles.listSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent activity</Text>
-            {searchQuery.trim().length > 0 && (
-              <Text style={styles.resultsCount}>
-                {filteredLog.length} {filteredLog.length === 1 ? "result" : "results"}
-              </Text>
+          <SearchField
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search management logs"
+          />
+
+          <MisoCallout
+            image={mascotImages.logNote}
+            title="Need help reviewing your logs?"
+            subtitle="Miso can summarize recent activity and incidents."
+            actionLabel="Ask Miso"
+            actionIcon="help-circle"
+            onPress={() => setChatVisible(true)}
+            tone="warm"
+          />
+
+          <View style={styles.listSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent activity</Text>
+              {searchQuery.trim().length > 0 && (
+                <Text style={styles.resultsCount}>
+                  {filteredLog.length} {filteredLog.length === 1 ? "result" : "results"}
+                </Text>
+              )}
+            </View>
+
+            {managementLog.length === 0 ? (
+              <EmptyState
+                image={mascotImages.logNote}
+                title="No management logs yet"
+                subtitle="Add your first operational note to start the record."
+                actionLabel="Add first log"
+                onAction={openAddModal}
+              />
+            ) : filteredLog.length === 0 ? (
+              <EmptyState
+                icon={<Ionicons name="search-outline" size={28} color={colors.primary} />}
+                title="No matching logs"
+                subtitle="Try a different search or clear the filter."
+              />
+            ) : (
+              filteredLog.map((item) => {
+                const presentation = getLogPresentation(item)
+
+                return (
+                  <View key={item.id} style={styles.logCard}>
+                    <View
+                      style={[
+                        styles.logIconWrap,
+                        { backgroundColor: presentation.iconBackground },
+                      ]}
+                    >
+                      <Ionicons name={presentation.icon} size={23} color={presentation.iconColor} />
+                    </View>
+
+                    <View style={styles.logMain}>
+                      <Text style={styles.itemTitle} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.itemDescription} numberOfLines={2}>
+                        {item.description || "No additional details."}
+                      </Text>
+                      <Text style={styles.logCategory}>{presentation.label}</Text>
+                    </View>
+
+                    <View style={styles.logTrailing}>
+                      {item.created_at && (
+                        <View style={styles.datePill}>
+                          <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
+                        </View>
+                      )}
+                      <View style={styles.cardActions}>
+                        <AnimatedPressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${item.title}`}
+                          onPress={() => openEditModal(item)}
+                          style={styles.cardAction}
+                          scaleTo={0.9}
+                        >
+                          <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+                        </AnimatedPressable>
+                        <AnimatedPressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete ${item.title}`}
+                          onPress={() => confirmDelete(item)}
+                          style={styles.cardAction}
+                          scaleTo={0.9}
+                        >
+                          <Ionicons name="trash-outline" size={17} color={colors.error} />
+                        </AnimatedPressable>
+                      </View>
+                    </View>
+                  </View>
+                )
+              })
             )}
           </View>
 
-          {managementLog.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="document-text-outline" size={28} color={colors.primary} />
-              </View>
-              <Text style={styles.emptyText}>No management logs yet</Text>
-              <Text style={styles.emptySubtext}>
-                Add your first operational note to start the record.
-              </Text>
-              <AnimatedPressable
-                accessibilityRole="button"
-                onPress={openAddModal}
-                style={styles.emptyButton}
-                scaleTo={0.95}
-              >
-                <Text style={styles.emptyButtonText}>Add first log</Text>
-              </AnimatedPressable>
-            </View>
-          ) : filteredLog.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="search-outline" size={28} color={colors.primary} />
-              </View>
-              <Text style={styles.emptyText}>No matching logs</Text>
-              <Text style={styles.emptySubtext}>Try a different search or clear the filter.</Text>
-            </View>
-          ) : (
-            filteredLog.map((item) => {
-              const presentation = getLogPresentation(item)
-
-              return (
-                <View key={item.id} style={styles.logCard}>
-                  <View
-                    style={[
-                      styles.logIconWrap,
-                      { backgroundColor: presentation.iconBackground },
-                    ]}
-                  >
-                    <Ionicons name={presentation.icon} size={23} color={presentation.iconColor} />
-                  </View>
-
-                  <View style={styles.logMain}>
-                    <Text style={styles.itemTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.itemDescription} numberOfLines={2}>
-                      {item.description || "No additional details."}
-                    </Text>
-                    <Text style={styles.logCategory}>{presentation.label}</Text>
-                  </View>
-
-                  <View style={styles.logTrailing}>
-                    {item.created_at && (
-                      <View style={styles.datePill}>
-                        <Text style={styles.itemDate}>{formatDate(item.created_at)}</Text>
-                      </View>
-                    )}
-                    <View style={styles.cardActions}>
-                      <AnimatedPressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Edit ${item.title}`}
-                        onPress={() => openEditModal(item)}
-                        style={styles.cardAction}
-                        scaleTo={0.9}
-                      >
-                        <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
-                      </AnimatedPressable>
-                      <AnimatedPressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Delete ${item.title}`}
-                        onPress={() => confirmDelete(item)}
-                        style={styles.cardAction}
-                        scaleTo={0.9}
-                      >
-                        <Ionicons name="trash-outline" size={17} color={colors.error} />
-                      </AnimatedPressable>
-                    </View>
-                  </View>
-                </View>
-              )
-            })
-          )}
-        </View>
-
-        <AnimatedPressable
-          accessibilityRole="button"
-          accessibilityLabel="Add management log"
-          onPress={openAddModal}
-          style={styles.bottomAddButton}
-          scaleTo={0.97}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-          <Text style={styles.bottomAddButtonText}>Add log</Text>
-        </AnimatedPressable>
-      </ScrollView>
-
-      <Sheet visible={modalVisible} onDismiss={closeModal}>
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={styles.modalHeader}>
-            <View style={styles.modalHeaderIcon}>
-              <Ionicons
-                name={editingItem ? "create-outline" : "add"}
-                size={22}
-                color={colors.primary}
-              />
-            </View>
-            <View style={styles.modalHeaderCopy}>
-              <Text style={styles.modalEyebrow}>MANAGEMENT LOG</Text>
-              <Text style={styles.modalTitle}>
-                {editingItem ? "Edit entry" : "Add entry"}
-              </Text>
-            </View>
-            <AnimatedPressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={closeModal}
-              style={styles.modalClose}
-              scaleTo={0.9}
-            >
-              <Ionicons name="close" size={20} color={colors.textSecondary} />
-            </AnimatedPressable>
-          </View>
-
-          <Text style={styles.modalDescription}>
-            Capture the details your team will need for the next shift.
-          </Text>
-
-          {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
-
-          <TextInput
-            label="Title"
-            value={formTitle}
-            onChangeText={setFormTitle}
-            mode="outlined"
-            style={styles.modalInput}
-            outlineStyle={styles.modalInputOutline}
-            autoFocus
-          />
-          <TextInput
-            label="Description"
-            value={formDescription}
-            onChangeText={setFormDescription}
-            mode="outlined"
-            multiline
-            numberOfLines={4}
-            style={[styles.modalInput, styles.descriptionInput]}
-            outlineStyle={styles.modalInputOutline}
-          />
-
-          <View style={styles.modalActions}>
-            <Button
-              mode="outlined"
-              onPress={closeModal}
-              style={styles.cancelButton}
-              contentStyle={styles.modalButtonContent}
-              labelStyle={styles.cancelButtonText}
-            >
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              onPress={handleSave}
-              style={styles.saveButton}
-              contentStyle={styles.modalButtonContent}
-              labelStyle={styles.saveButtonText}
-            >
-              {editingItem ? "Save changes" : "Add log"}
-            </Button>
-          </View>
+          <PrimaryAction label="Add log" onPress={openAddModal} />
         </ScrollView>
-      </Sheet>
+      </View>
+
+      <FormSheet
+        visible={modalVisible}
+        onDismiss={closeModal}
+        icon={editingItem ? "create-outline" : "add"}
+        title={editingItem ? "Edit entry" : "Add entry"}
+        subtitle="Capture the details your team will need for the next shift."
+      >
+        {saveError && <Text style={styles.saveErrorText}>{saveError}</Text>}
+
+        <TextInput
+          label="Title"
+          value={formTitle}
+          onChangeText={setFormTitle}
+          mode="outlined"
+          style={styles.modalInput}
+          outlineStyle={styles.modalInputOutline}
+          autoFocus
+        />
+        <TextInput
+          label="Description"
+          value={formDescription}
+          onChangeText={setFormDescription}
+          mode="outlined"
+          multiline
+          numberOfLines={4}
+          style={[styles.modalInput, styles.descriptionInput]}
+          outlineStyle={styles.modalInputOutline}
+        />
+
+        <View style={styles.modalActions}>
+          <Button
+            mode="outlined"
+            onPress={closeModal}
+            style={styles.cancelButton}
+            contentStyle={styles.modalButtonContent}
+            labelStyle={styles.cancelButtonText}
+          >
+            Cancel
+          </Button>
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            style={styles.saveButton}
+            contentStyle={styles.modalButtonContent}
+            labelStyle={styles.saveButtonText}
+          >
+            {editingItem ? "Save changes" : "Add log"}
+          </Button>
+        </View>
+      </FormSheet>
 
       <MisoChatModal visible={chatVisible} onDismiss={() => setChatVisible(false)} />
     </SafeAreaView>
@@ -530,39 +459,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 24,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    letterSpacing: -0.55,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 2,
-    fontVariant: ["tabular-nums"],
-  },
   summaryCard: {
     minHeight: 144,
     paddingHorizontal: 16,
     paddingTop: 15,
     paddingBottom: 13,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     overflow: "hidden",
     backgroundColor: colors.primary,
     boxShadow: "0 4px 12px rgba(22, 108, 67, 0.12)",
   },
   summaryTitle: {
     fontSize: 17,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: "#FFFFFF",
   },
   metricsRow: {
@@ -585,7 +494,7 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 19,
     lineHeight: 23,
-    fontWeight: "800",
+    fontFamily: "Nunito_800ExtraBold",
     color: "#FFFFFF",
     fontVariant: ["tabular-nums"],
     marginTop: 3,
@@ -593,76 +502,9 @@ const styles = StyleSheet.create({
   metricLabel: {
     maxWidth: "100%",
     fontSize: 9,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: "rgba(255,255,255,0.84)",
     marginTop: 1,
-  },
-  searchInput: {
-    height: 50,
-    backgroundColor: colors.surface,
-    fontSize: 14,
-  },
-  searchOutline: {
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  searchContent: {
-    minHeight: 50,
-  },
-  misoBanner: {
-    minHeight: 108,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 13,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceWarm,
-    borderWidth: 1,
-    borderColor: colors.statStockBorder,
-  },
-  misoImageWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 20,
-    overflow: "hidden",
-    backgroundColor: colors.surface,
-  },
-  misoImage: {
-    width: "100%",
-    height: "100%",
-  },
-  misoCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  misoTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  misoText: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textSecondary,
-    marginTop: 3,
-  },
-  misoButton: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    marginTop: 8,
-  },
-  misoButtonText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#FFFFFF",
   },
   listSection: {
     gap: 10,
@@ -675,16 +517,16 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 19,
-    fontWeight: "700",
+    fontFamily: "Nunito_800ExtraBold",
     color: colors.textPrimary,
     letterSpacing: -0.2,
   },
   resultsCount: {
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: "Nunito_700Bold",
     color: colors.primary,
     backgroundColor: colors.surfaceWarm,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     paddingHorizontal: 10,
     paddingVertical: 5,
     fontVariant: ["tabular-nums"],
@@ -696,7 +538,7 @@ const styles = StyleSheet.create({
     gap: 11,
     paddingHorizontal: 11,
     paddingVertical: 10,
-    borderRadius: 15,
+    borderRadius: radii.md,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -709,7 +551,7 @@ const styles = StyleSheet.create({
   logIconWrap: {
     width: 46,
     height: 46,
-    borderRadius: 14,
+    borderRadius: radii.sm,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -719,13 +561,13 @@ const styles = StyleSheet.create({
   },
   logCategory: {
     fontSize: 10.5,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.primary,
     marginTop: 5,
   },
   itemTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     lineHeight: 19,
     color: colors.textPrimary,
   },
@@ -739,20 +581,19 @@ const styles = StyleSheet.create({
     maxWidth: 86,
     paddingHorizontal: 9,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.surfaceWarm,
-    borderWidth: 1,
-    borderColor: colors.statStockBorder,
   },
   itemDescription: {
     fontSize: 12,
     lineHeight: 16,
+    fontFamily: "Nunito_600SemiBold",
     color: colors.textSecondary,
     marginTop: 3,
   },
   itemDate: {
     fontSize: 10.5,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.primary,
     fontVariant: ["tabular-nums"],
   },
@@ -765,131 +606,29 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: radii.sm,
     backgroundColor: colors.background,
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emptyIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceWarm,
-    marginBottom: 12,
-  },
-  emptyText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  emptySubtext: {
-    maxWidth: 280,
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: "center",
-    color: colors.textMuted,
-    marginTop: 5,
-  },
-  emptyButton: {
-    minHeight: 38,
-    justifyContent: "center",
-    paddingHorizontal: 15,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    marginTop: 15,
-  },
-  emptyButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  bottomAddButton: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    boxShadow: "0 4px 10px rgba(22, 108, 67, 0.18)",
-  },
-  bottomAddButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-  },
-  modalHeaderIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceWarm,
-  },
-  modalHeaderCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  modalEyebrow: {
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.9,
-    color: colors.primary,
-  },
-  modalTitle: {
-    fontSize: 21,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    letterSpacing: -0.25,
-  },
-  modalClose: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
-  modalDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.textSecondary,
-    marginTop: 14,
-    marginBottom: 16,
-  },
-  saveErrorText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.error,
-    marginBottom: 14,
-    backgroundColor: "#FFF1EF",
-    padding: 11,
-    borderRadius: 11,
   },
   modalInput: {
     backgroundColor: colors.surface,
     marginBottom: 13,
   },
   modalInputOutline: {
-    borderRadius: 14,
+    borderRadius: radii.md,
     borderColor: colors.border,
   },
   descriptionInput: {
     minHeight: 116,
+  },
+  saveErrorText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "Nunito_600SemiBold",
+    color: colors.error,
+    marginBottom: 14,
+    backgroundColor: "#FBE7E5",
+    padding: 11,
+    borderRadius: radii.sm,
   },
   modalActions: {
     flexDirection: "row",
@@ -898,12 +637,12 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     borderColor: colors.border,
   },
   saveButton: {
     flex: 1.25,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: colors.primary,
   },
   modalButtonContent: {
@@ -911,11 +650,11 @@ const styles = StyleSheet.create({
   },
   cancelButtonText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
     color: colors.textSecondary,
   },
   saveButtonText: {
     fontSize: 13,
-    fontWeight: "700",
+    fontFamily: "Nunito_700Bold",
   },
 })

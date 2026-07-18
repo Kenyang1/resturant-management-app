@@ -7,6 +7,7 @@ import {
   Nunito_400Regular,
   Nunito_600SemiBold,
   Nunito_700Bold,
+  Nunito_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/nunito";
 import { Stack } from "expo-router";
@@ -53,6 +54,7 @@ export default function RootLayout() {
     Nunito_400Regular,
     Nunito_600SemiBold,
     Nunito_700Bold,
+    Nunito_800ExtraBold,
   });
 
   useEffect(() => {
@@ -67,6 +69,7 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="landing" />
           <Stack.Screen name="login" />
           <Stack.Screen name="sign-up" />
           <Stack.Screen name="forgot-password" />

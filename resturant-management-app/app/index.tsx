@@ -8,7 +8,7 @@ import { Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Session } from "@supabase/supabase-js";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "react-native-paper";
 
@@ -35,7 +35,9 @@ export default function Index() {
     )
   }
 
-  return <Redirect href={session ? "/(tabs)" : "/login"} />
+  if (session) return <Redirect href="/(tabs)" />
+  // The native phone app skips straight to sign-in; only the web build shows a landing page first.
+  return <Redirect href={Platform.OS === "web" ? "/landing" : "/login"} />
 }
 
 const styles = StyleSheet.create({

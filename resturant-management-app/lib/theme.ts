@@ -5,13 +5,17 @@
 export const colors = {
   // Primary action green
   primary: "#247A50",
-  primaryDark: "#195F3D",
+  primaryDark: "#185C3C",
   secondary: "#6D9D80",
 
   // Canvas & surfaces
   background: "#FAFAF7",
+  // Warmer cream used for the marketing/landing surface, distinct from the in-app canvas above.
+  canvasWarm: "#F6F3EC",
   surface: "#FFFFFF",
   surfaceWarm: "#EEF7F0",
+  // Pale sage used for soft highlight cards (e.g. the More/Profile finance shortcut).
+  softSage: "#E8F2EB",
 
   // Navigation
   navBackground: "#FFFFFF",
@@ -19,15 +23,17 @@ export const colors = {
   navInactive: "#737872",
 
   // Text
-  textPrimary: "#1E241F",
-  textSecondary: "#606760",
+  textPrimary: "#17211C",
+  textSecondary: "#68706B",
   textMuted: "#90968F",
 
   // Status
   success: "#2F8058",
   error: "#C95A52",
-  warning: "#E8A126",
+  warning: "#F5B94C",
   lowStock: "#E58B18",
+  // Apricot emphasis accent for standout CTAs/badges distinct from the primary green.
+  apricotEmphasis: "#F49345",
 
   // Feature accents remain distinct within the muted palette.
   management: "#D9952D",
@@ -39,7 +45,7 @@ export const colors = {
   errorDark: "#A9433D",
 
   // Hairlines & shadows
-  border: "#DADDD7",
+  border: "#E5E1DA",
   shadow: "rgba(31, 55, 40, 0.10)",
 
   // Stat / highlight tiles
@@ -59,4 +65,13 @@ export const colors = {
   // Tasks tab
   tasks: "#2F8058",
   tasksDark: "#216641",
+}
+
+/** Disciplined corner-radius scale — pick one of these per surface, don't invent one-offs. */
+export const radii = {
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
+  pill: 999,
 }
